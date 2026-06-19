@@ -11,7 +11,8 @@
     "./design/tailwind-preset": "./design/tailwind-preset.ts",
     "./design/components": "./design/components/index.ts",
     "./types": "./types/index.ts",
-    "./ws": "./ws/types.ts"
+    "./ws": "./ws/types.ts",
+    "./utils/camera-schedule": "./utils/cameraSchedule.ts"
   },
   "scripts": {
     "db:migrate": "tsx db/migrate.ts",

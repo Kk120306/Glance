@@ -8,6 +8,13 @@
       "when": 1781860001157,
       "tag": "0000_living_makkari",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781860100000,
+      "tag": "0001_phase2",
+      "breakpoints": true
     }
   ]
 }

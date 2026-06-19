@@ -1,9 +1,20 @@
-import { pgTable, uuid, text, boolean, timestamp, check } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, timestamp, integer, check } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 export const patients = pgTable('patients', {
   id: uuid('id').primaryKey().defaultRandom(),
   deviceToken: uuid('device_token').notNull().unique(),
+  cameraOverrideActive: boolean('camera_override_active').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const cameraSchedules = pgTable('camera_schedules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  patientId: uuid('patient_id').notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  dayOfWeek: integer('day_of_week').notNull(),
+  startTime: text('start_time').notNull(),
+  endTime: text('end_time').notNull(),
+  timezone: text('timezone').notNull().default('UTC'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -12,6 +23,7 @@ export const familyMembers = pgTable('family_members', {
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
   passwordHash: text('password_hash').notNull(),
+  elevenlabsVoiceId: text('elevenlabs_voice_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -19,24 +31,26 @@ export const messages = pgTable(
   'messages',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    senderId: uuid('sender_id')
-      .notNull()
-      .references(() => familyMembers.id),
-    recipientId: uuid('recipient_id')
-      .notNull()
-      .references(() => patients.id),
+    senderId: uuid('sender_id').notNull().references(() => familyMembers.id),
+    recipientId: uuid('recipient_id').notNull().references(() => patients.id),
     content: text('content').notNull(),
     isYesNo: boolean('is_yes_no').notNull().default(false),
     isRead: boolean('is_read').notNull().default(false),
+    toneClass: text('tone_class').notNull().default('neutral'),
+    reply: text('reply'),
+    repliedAt: timestamp('replied_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     check('content_length', sql`char_length(${table.content}) BETWEEN 1 AND 1000`),
+    check('valid_reply', sql`${table.reply} IN ('yes', 'no') OR ${table.reply} IS NULL`),
   ],
 )
 
 export type Patient = typeof patients.$inferSelect
 export type NewPatient = typeof patients.$inferInsert
+export type CameraScheduleRow = typeof cameraSchedules.$inferSelect
+export type NewCameraScheduleRow = typeof cameraSchedules.$inferInsert
 export type FamilyMember = typeof familyMembers.$inferSelect
 export type NewFamilyMember = typeof familyMembers.$inferInsert
 export type Message = typeof messages.$inferSelect

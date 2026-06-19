@@ -1,2 +1,2 @@
-export type { Patient, FamilyMember, Message, NewMessage } from '../db/schema'
-export type { ServerToClientMessage, EmitRequest } from '../ws/types'
+export type { Patient, FamilyMember, Message, NewMessage, CameraScheduleRow } from '../db/schema'
+export type { ServerToClientMessage, EmitRequest, CameraSchedule, ClientToServerMessage } from '../ws/types'
