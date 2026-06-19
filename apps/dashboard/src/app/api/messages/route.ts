@@ -6,6 +6,7 @@ import { desc, eq } from 'drizzle-orm'
 import type { EmitRequest } from '@glance/shared/ws'
 import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
+import { classifyTone } from '@/lib/tone-classifier'
 
 const sendMessageSchema = z.object({
   content: z.string().min(1, 'Message cannot be empty').max(1000, 'Message too long'),
@@ -45,6 +46,8 @@ export async function POST(req: NextRequest) {
     session.user.name ?? session.user.email,
   )
 
+  const toneClass = await classifyTone(parsed.data.content)
+
   const [message] = await db
     .insert(messages)
     .values({
@@ -52,6 +55,7 @@ export async function POST(req: NextRequest) {
       recipientId: patient.id,
       content: parsed.data.content,
       isYesNo: parsed.data.isYesNo,
+      toneClass,
     })
     .returning()
 
@@ -62,7 +66,7 @@ export async function POST(req: NextRequest) {
   const wsServerUrl = process.env.WS_SERVER_URL
   if (wsServerUrl) {
     const emitBody: EmitRequest = {
-      room: patient.deviceToken,
+      targetPatientId: patient.id,
       event: { type: 'NEW_MESSAGE', payload: message },
     }
     try {
