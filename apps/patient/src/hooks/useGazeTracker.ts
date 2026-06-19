@@ -101,7 +101,13 @@ export function useGazeTracker({ videoRef, enabled }: UseGazeTrackerOptions): Us
         return
       }
 
-      const results = lm.detectForVideo(video, performance.now())
+      let results: { faceLandmarks: Array<Array<{ x: number; y: number; z: number }>> }
+      try {
+        results = lm.detectForVideo(video, performance.now())
+      } catch {
+        animFrameRef.current = requestAnimationFrame(processFrame)
+        return
+      }
       const landmarks = results.faceLandmarks[0]
 
       if (!landmarks || landmarks.length < 474) {
