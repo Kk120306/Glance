@@ -10,6 +10,7 @@ import { isCameraWindowActive } from '@glance/shared/utils/camera-schedule'
 import { useCameraStream } from '../hooks/useCameraStream'
 import { useGazeTracker } from '../hooks/useGazeTracker'
 import { YesNoScreen } from './YesNoScreen'
+import { GazeTrackingPanel } from './GazeTrackingPanel'
 
 export const SOS_THRESHOLD = 0.15
 const MIC_CHECK_INTERVAL_MS = 200
@@ -45,6 +46,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
   const [currentMessage, setCurrentMessage] = useState<CurrentMessage | null>(null)
   const [sosTriggered, setSosTriggered] = useState(false)
   const [micDenied, setMicDenied] = useState(false)
+  const [showGazePanel, setShowGazePanel] = useState(true)
 
   const audioCtxRef = useRef<AudioContext | null>(null)
   const socketRef = useRef<Socket | null>(null)
@@ -60,7 +62,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
   })
 
   // ── Gaze tracker (only when camera is active)
-  const { modelReady, gazeDirection, blinkSignal, facePresent } = useGazeTracker({
+  const { modelReady, gazeDirection, blinkSignal, facePresent, gazeOffsetRef, recenter } = useGazeTracker({
     videoRef,
     enabled: !!stream,
   })
@@ -389,6 +391,34 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
 
         {/* SOS button — always visible, registered as interaction target */}
         <SOSButton onClick={() => void triggerSOS()} />
+
+        {/* Gaze tracking preview — live self-view + direction/blink feedback.
+            Reuses the existing stream (no extra camera track). Dev aid; dismissible. */}
+        {showGazePanel ? (
+          <GazeTrackingPanel
+            stream={stream}
+            gazeDirection={gazeDirection}
+            gazeOffsetRef={gazeOffsetRef}
+            blinkSignal={blinkSignal}
+            modelReady={modelReady}
+            facePresent={facePresent}
+            mode={interactionMode}
+            permissionDenied={permissionDenied}
+            onRecenter={recenter}
+            onClose={() => setShowGazePanel(false)}
+            minimized={currentMessage !== null}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowGazePanel(true)}
+            aria-label="Show gaze tracking panel"
+            className="fixed top-3 right-3 z-50 rounded-full px-3 py-2 text-sm font-medium shadow-lg transition-transform active:scale-95"
+            style={{ backgroundColor: 'rgba(17,17,17,0.92)', color: colors.patient.text, border: `1px solid ${colors.patient.accent}55` }}
+          >
+            👁 Show tracking
+          </button>
+        )}
       </div>
     </InteractionProvider>
   )
