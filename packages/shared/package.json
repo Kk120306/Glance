@@ -1,0 +1,44 @@
+{
+  "name": "@glance/shared",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./db": "./db/index.ts",
+    "./db/schema": "./db/schema.ts",
+    "./design": "./design/index.ts",
+    "./design/tokens": "./design/tokens.ts",
+    "./design/tailwind-preset": "./design/tailwind-preset.ts",
+    "./design/components": "./design/components/index.ts",
+    "./types": "./types/index.ts",
+    "./ws": "./ws/types.ts"
+  },
+  "scripts": {
+    "db:migrate": "tsx db/migrate.ts",
+    "db:generate": "drizzle-kit generate",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.5",
+    "zod": "^3.25.28"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "drizzle-kit": "^0.31.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19"
+  },
+  "peerDependenciesOptional": true
+}
