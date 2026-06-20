@@ -1,9 +1,10 @@
-import { pgTable, uuid, text, boolean, timestamp, integer, check } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, timestamp, integer, check, unique } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 export const patients = pgTable('patients', {
   id: uuid('id').primaryKey().defaultRandom(),
   deviceToken: uuid('device_token').notNull().unique(),
+  name: text('name').notNull().default('New Patient'),
   cameraOverrideActive: boolean('camera_override_active').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -55,6 +56,25 @@ export const messages = pgTable(
   ],
 )
 
+export const patientCaregivers = pgTable(
+  'patient_caregivers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    patientId: uuid('patient_id')
+      .notNull()
+      .references(() => patients.id, { onDelete: 'cascade' }),
+    familyMemberId: uuid('family_member_id')
+      .notNull()
+      .references(() => familyMembers.id, { onDelete: 'cascade' }),
+    role: text('role').notNull().default('caregiver'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique('unique_patient_caregiver').on(table.patientId, table.familyMemberId),
+    check('valid_role', sql`${table.role} IN ('primary_caregiver', 'caregiver')`),
+  ],
+)
+
 export type Patient = typeof patients.$inferSelect
 export type NewPatient = typeof patients.$inferInsert
 export type CameraScheduleRow = typeof cameraSchedules.$inferSelect
@@ -63,3 +83,6 @@ export type FamilyMember = typeof familyMembers.$inferSelect
 export type NewFamilyMember = typeof familyMembers.$inferInsert
 export type Message = typeof messages.$inferSelect
 export type NewMessage = typeof messages.$inferInsert
+export type PatientCaregiver = typeof patientCaregivers.$inferSelect
+export type NewPatientCaregiver = typeof patientCaregivers.$inferInsert
+
