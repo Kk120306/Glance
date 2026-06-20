@@ -34,6 +34,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Patient-initiated phrases have no family sender / cloned voice — those are
+  // vocalized locally on the patient client, never via this endpoint.
+  if (!message.senderId) {
+    return NextResponse.json({ error: 'No voice sender for this message' }, { status: 503 })
+  }
+
   const [sender] = await db.select().from(familyMembers).where(eq(familyMembers.id, message.senderId))
   const voiceId = sender?.elevenlabsVoiceId
   const apiKey = process.env.ELEVENLABS_API_KEY

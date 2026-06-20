@@ -25,6 +25,33 @@ interface CameraScheduleItem {
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const WS_SERVER_URL = process.env.NEXT_PUBLIC_WS_SERVER_URL ?? 'http://localhost:4000'
 
+// Discrete double-chime to alert the caregiver to a patient-initiated request.
+function playDoubleChime() {
+  if (typeof window === 'undefined' || !('AudioContext' in window)) return
+  try {
+    const ctx = new AudioContext()
+    const beep = (startOffset: number, freq: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      const t0 = ctx.currentTime + startOffset
+      gain.gain.setValueAtTime(0.0001, t0)
+      gain.gain.exponentialRampToValueAtTime(0.4, t0 + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(t0)
+      osc.stop(t0 + 0.2)
+    }
+    beep(0, 880)
+    beep(0.22, 1175)
+    setTimeout(() => ctx.close().catch(() => {}), 800)
+  } catch {
+    // ignore audio errors
+  }
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { data: session } = useSession()
@@ -55,6 +82,9 @@ export default function DashboardPage() {
   // SOS alert
   const [sosAlert, setSosAlert] = useState(false)
   const [sosTimestamp, setSosTimestamp] = useState<string | null>(null)
+
+  // Patient-initiated phrase alert (toast)
+  const [patientAlert, setPatientAlert] = useState<string | null>(null)
 
   const socketRef = useRef<Socket | null>(null)
 
@@ -139,6 +169,17 @@ export default function DashboardPage() {
 
     socket.on('connect', register)
     socket.on('reconnect', register)
+
+    socket.on('NEW_MESSAGE', (envelope: ServerToClientMessage) => {
+      if (envelope.type !== 'NEW_MESSAGE') return
+      const msg = envelope.payload
+      // Only patient-initiated phrases concern the caregiver here; family-sent
+      // messages already appear via the compose flow's optimistic refetch.
+      if (!msg.senderPatientId) return
+      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [msg, ...prev]))
+      setPatientAlert(msg.content)
+      playDoubleChime()
+    })
 
     socket.on('NEW_REPLY', (envelope: ServerToClientMessage) => {
       if (envelope.type !== 'NEW_REPLY') return
@@ -257,6 +298,32 @@ export default function DashboardPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col p-6 gap-6">
+      {/* Patient request toast — dismissible, corner */}
+      {patientAlert && (
+        <div
+          role="alert"
+          className="fixed top-4 right-4 z-50 flex max-w-sm items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-2xl"
+        >
+          <span className="text-2xl" aria-hidden>
+            🔔
+          </span>
+          <div className="flex flex-col">
+            <span className="text-xs font-bold uppercase tracking-wide text-amber-700">
+              Patient request
+            </span>
+            <span className="text-base font-semibold text-neutral-900">{patientAlert}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPatientAlert(null)}
+            aria-label="Dismiss patient request"
+            className="ml-2 text-neutral-400 hover:text-neutral-700"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* SOS Alert */}
       {sosAlert && (
         <div
@@ -428,12 +495,17 @@ export default function DashboardPage() {
             {messages.map(msg => (
               <li key={msg.id}>
                 <MessageBubble
-                  senderName={session?.user?.name ?? session?.user?.email ?? 'You'}
+                  senderName={
+                    msg.senderPatientId
+                      ? 'Patient'
+                      : (session?.user?.name ?? session?.user?.email ?? 'You')
+                  }
                   content={msg.content}
                   timestamp={msg.createdAt}
                   isYesNo={msg.isYesNo}
                   reply={msg.reply}
                   repliedAt={msg.repliedAt}
+                  fromPatient={!!msg.senderPatientId}
                 />
               </li>
             ))}

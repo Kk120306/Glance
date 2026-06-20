@@ -32,7 +32,9 @@ export async function POST(
     .from(messages)
     .where(eq(messages.recipientId, id))
 
-  const caregiverIds = [...new Set(sentMessages.map(m => m.senderId))]
+  const caregiverIds = [
+    ...new Set(sentMessages.map(m => m.senderId).filter((id): id is string => id !== null)),
+  ]
 
   const wsServerUrl = process.env.WS_SERVER_URL
   if (wsServerUrl && caregiverIds.length > 0) {

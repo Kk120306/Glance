@@ -46,7 +46,8 @@ export async function POST(
     .where(eq(messages.id, id))
 
   const wsServerUrl = process.env.WS_SERVER_URL
-  if (wsServerUrl) {
+  // Only family-sent messages have a caregiver to notify of a reply.
+  if (wsServerUrl && message.senderId) {
     const emitBody: EmitRequest = {
       targetFamilyMemberId: message.senderId,
       event: {
