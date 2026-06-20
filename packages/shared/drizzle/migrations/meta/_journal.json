@@ -15,6 +15,13 @@
       "when": 1781860100000,
       "tag": "0001_phase2",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781915608947,
+      "tag": "0002_thin_madame_web",
+      "breakpoints": true
     }
   ]
 }

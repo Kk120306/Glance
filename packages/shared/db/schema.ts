@@ -31,7 +31,10 @@ export const messages = pgTable(
   'messages',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    senderId: uuid('sender_id').notNull().references(() => familyMembers.id),
+    // Nullable: a message is sent by EITHER a family member OR the patient.
+    senderId: uuid('sender_id').references(() => familyMembers.id),
+    // Set when the patient initiates the message (e.g. a fixed-phrase request).
+    senderPatientId: uuid('sender_patient_id').references(() => patients.id),
     recipientId: uuid('recipient_id').notNull().references(() => patients.id),
     content: text('content').notNull(),
     isYesNo: boolean('is_yes_no').notNull().default(false),
@@ -44,6 +47,11 @@ export const messages = pgTable(
   (table) => [
     check('content_length', sql`char_length(${table.content}) BETWEEN 1 AND 1000`),
     check('valid_reply', sql`${table.reply} IN ('yes', 'no') OR ${table.reply} IS NULL`),
+    // Invariant: exactly one sender (family member XOR patient) is populated.
+    check(
+      'valid_sender',
+      sql`(${table.senderId} IS NOT NULL AND ${table.senderPatientId} IS NULL) OR (${table.senderId} IS NULL AND ${table.senderPatientId} IS NOT NULL)`,
+    ),
   ],
 )
 

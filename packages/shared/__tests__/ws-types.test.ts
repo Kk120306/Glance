@@ -16,6 +16,7 @@ describe('WebSocket envelope type guards', () => {
       payload: {
         id: 'uuid-1',
         senderId: 'sender-uuid',
+        senderPatientId: null,
         recipientId: 'patient-uuid',
         content: 'Hello',
         isYesNo: false,
