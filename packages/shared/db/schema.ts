@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm'
 
 export const patients = pgTable('patients', {
   id: uuid('id').primaryKey().defaultRandom(),
-  deviceToken: uuid('device_token').notNull().unique(),
+  deviceToken: uuid('device_token').notNull().unique().defaultRandom(),
   name: text('name').notNull().default('New Patient'),
   cameraOverrideActive: boolean('camera_override_active').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

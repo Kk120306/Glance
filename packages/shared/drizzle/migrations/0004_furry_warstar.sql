@@ -1,0 +1,1 @@
+ALTER TABLE "patients" ALTER COLUMN "device_token" SET DEFAULT gen_random_uuid();
