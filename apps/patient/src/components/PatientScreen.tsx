@@ -9,8 +9,13 @@ import type { ServerToClientMessage, CameraSchedule } from '@glance/shared/ws'
 import { isCameraWindowActive } from '@glance/shared/utils/camera-schedule'
 import { useCameraStream } from '../hooks/useCameraStream'
 import { useGazeTracker } from '../hooks/useGazeTracker'
+import { useInteractiveTarget } from '../hooks/useInteractiveTarget'
 import { YesNoScreen } from './YesNoScreen'
 import { GazeTrackingPanel } from './GazeTrackingPanel'
+import { SpeakButton } from './SpeakButton'
+import { PhraseBoard } from './PhraseBoard'
+import { CalibrationScreen } from './CalibrationScreen'
+import { loadStoredEarThreshold, saveEarThreshold } from '../utils/calibration'
 
 export const SOS_THRESHOLD = 0.15
 const MIC_CHECK_INTERVAL_MS = 200
@@ -47,6 +52,22 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
   const [sosTriggered, setSosTriggered] = useState(false)
   const [micDenied, setMicDenied] = useState(false)
   const [showGazePanel, setShowGazePanel] = useState(true)
+  const [showPhraseBoard, setShowPhraseBoard] = useState(false)
+  const [showCalibration, setShowCalibration] = useState(false)
+  // Custom blink threshold from a prior calibration (persisted in localStorage).
+  const [earThreshold, setEarThreshold] = useState<number | null>(null)
+
+  // Load any saved calibration on mount (client-only).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setEarThreshold(loadStoredEarThreshold(window.localStorage))
+  }, [])
+
+  // Auto-run calibration once per session, as soon as the camera is available.
+  // Calibration is meaningless without the camera (it measures EAR from video),
+  // so it waits for the stream rather than firing in scan-only startups. The
+  // wizard itself is fully autonomous and self-closes — no human input required.
+  const autoCalibratedRef = useRef(false)
 
   const audioCtxRef = useRef<AudioContext | null>(null)
   const socketRef = useRef<Socket | null>(null)
@@ -62,14 +83,24 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
   })
 
   // ── Gaze tracker (only when camera is active)
-  const { modelReady, gazeDirection, blinkSignal, facePresent, gazeOffsetRef, recenter } = useGazeTracker({
+  const { modelReady, gazeDirection, blinkSignal, facePresent, gazeOffsetRef, gazeDirectionRawRef, earRef, recenter } = useGazeTracker({
     videoRef,
     enabled: !!stream,
+    earThreshold: earThreshold ?? undefined,
   })
 
   // Determine interaction mode
   const interactionMode: 'gaze' | 'scan' =
     stream && modelReady && facePresent ? 'gaze' : 'scan'
+
+  // Fire the one-shot startup calibration once the session is live and a camera
+  // stream exists. Runs every fresh startup (per page load); the wizard waits for
+  // a face, samples, saves, and closes itself with no human input.
+  useEffect(() => {
+    if (!activated || !stream || autoCalibratedRef.current) return
+    autoCalibratedRef.current = true
+    setShowCalibration(true)
+  }, [activated, stream])
 
   // ── Update cameraActive on schedule interval
   useEffect(() => {
@@ -188,6 +219,35 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
 
     setTimeout(() => setSosTriggered(false), 5000)
   }, [patientConfig, dashboardUrl, deviceToken])
+
+  // ── Patient-initiated phrase: speak locally now, persist + notify best-effort.
+  const sendPhrase = useCallback(
+    (phrase: string) => {
+      // Local TTS first — zero-latency feedback for the patient and anyone nearby.
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(phrase))
+      }
+
+      // Persist + broadcast to caregivers. Failures are logged only: the local
+      // vocalization already gave feedback, so we never block or alarm the patient.
+      void (async () => {
+        try {
+          const res = await fetch(`${dashboardUrl}/api/messages/patient`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-device-token': deviceToken },
+            body: JSON.stringify({ content: phrase }),
+          })
+          if (!res.ok) console.warn(`[phrase] server rejected phrase: ${res.status}`)
+        } catch (err) {
+          console.warn('[phrase] failed to post phrase:', err)
+        }
+      })()
+
+      setShowPhraseBoard(false)
+    },
+    [dashboardUrl, deviceToken],
+  )
 
   // ── WebSocket connection with REGISTER
   const connectSocket = useCallback(
@@ -309,7 +369,9 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
     <InteractionProvider
       mode={interactionMode}
       gazeDirection={gazeDirection}
+      gazeDirectionRawRef={gazeDirectionRawRef}
       blinkSignal={blinkSignal}
+      paused={showCalibration}
     >
       <div
         className="relative flex h-screen w-full flex-col"
@@ -389,8 +451,17 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
           </div>
         )}
 
-        {/* SOS button — always visible, registered as interaction target */}
-        <SOSButton onClick={() => void triggerSOS()} />
+        {/* SOS button — always visible; reachable by the gaze cursor and scan. */}
+        <SosTarget onTrigger={() => void triggerSOS()} />
+
+        {/* Speak button — opens the fixed-phrase board. Hidden while the board
+            is open (the board carries its own Close). */}
+        {!showPhraseBoard && <SpeakButton onActivate={() => setShowPhraseBoard(true)} />}
+
+        {/* Patient-initiated fixed phrase board (fullscreen overlay) */}
+        {showPhraseBoard && (
+          <PhraseBoard onPhrase={sendPhrase} onClose={() => setShowPhraseBoard(false)} />
+        )}
 
         {/* Gaze tracking preview — live self-view + direction/blink feedback.
             Reuses the existing stream (no extra camera track). Dev aid; dismissible. */}
@@ -405,6 +476,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
             mode={interactionMode}
             permissionDenied={permissionDenied}
             onRecenter={recenter}
+            onCalibrate={() => setShowCalibration(true)}
             onClose={() => setShowGazePanel(false)}
             minimized={currentMessage !== null}
           />
@@ -419,7 +491,35 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
             👁 Show tracking
           </button>
         )}
+
+        {/* Calibration wizard — auto-runs once at startup and self-closes; a
+            caregiver can also re-launch it from the gaze panel. Fully autonomous
+            (no required input) and reuses the existing camera stream. */}
+        {showCalibration && (
+          <CalibrationScreen
+            earRef={earRef}
+            gazeOffsetRef={gazeOffsetRef}
+            facePresent={facePresent}
+            onRecenter={recenter}
+            onComplete={(threshold) => {
+              saveEarThreshold(window.localStorage, threshold)
+              setEarThreshold(threshold)
+              setShowCalibration(false)
+            }}
+            onExit={() => setShowCalibration(false)}
+          />
+        )}
       </div>
     </InteractionProvider>
   )
+}
+
+/**
+ * Registers the SOS button as an interactive target so the gaze cursor (or scan
+ * highlight) can select it — the camera-active secondary SOS path. The vocal
+ * Web-Audio SOS path remains independent and is unaffected.
+ */
+function SosTarget({ onTrigger }: { onTrigger: () => void }) {
+  const { ref, focused } = useInteractiveTarget<HTMLButtonElement>('sos', onTrigger)
+  return <SOSButton ref={ref} focused={focused} onClick={onTrigger} />
 }

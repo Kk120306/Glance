@@ -55,7 +55,11 @@ export function YesNoScreen({ question, messageId, dashboardUrl, deviceToken, on
     return registerTarget(target)
   }, [registerTarget, messageId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { focusedTargetId } = useInteraction()
+  const { focusedTargetId, dwellProgress } = useInteraction()
+
+  // Dwell fills the target the steered cursor is currently parked on.
+  const yesDwell = focusedTargetId === 'yes' ? dwellProgress : 0
+  const noDwell = focusedTargetId === 'no' ? dwellProgress : 0
 
   return (
     <div className="flex h-screen w-full flex-col" style={{ backgroundColor: '#0A0A0A' }}>
@@ -65,14 +69,20 @@ export function YesNoScreen({ question, messageId, dashboardUrl, deviceToken, on
         type="button"
         onClick={() => void submitReply('yes')}
         aria-label="Yes"
-        className="flex flex-1 items-center justify-center text-8xl font-black transition-opacity"
+        className="relative flex flex-1 items-center justify-center overflow-hidden text-8xl font-black transition-opacity"
         style={{
           backgroundColor: focusedTargetId === 'yes' ? '#16a34a' : '#15803d',
           color: '#ffffff',
-          outline: focusedTargetId === 'yes' ? '8px solid #86efac' : 'none',
+          outline: focusedTargetId === 'yes' || yesDwell > 0 ? '8px solid #86efac' : 'none',
         }}
       >
-        YES
+        {/* Dwell fill — grows as the patient holds their gaze up */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0"
+          style={{ height: `${Math.round(yesDwell * 100)}%`, backgroundColor: '#22c55e', opacity: 0.55 }}
+        />
+        <span className="relative">YES</span>
       </button>
 
       {/* Question — middle band */}
@@ -89,14 +99,20 @@ export function YesNoScreen({ question, messageId, dashboardUrl, deviceToken, on
         type="button"
         onClick={() => void submitReply('no')}
         aria-label="No"
-        className="flex flex-1 items-center justify-center text-8xl font-black transition-opacity"
+        className="relative flex flex-1 items-center justify-center overflow-hidden text-8xl font-black transition-opacity"
         style={{
           backgroundColor: focusedTargetId === 'no' ? '#dc2626' : '#b91c1c',
           color: '#ffffff',
-          outline: focusedTargetId === 'no' ? '8px solid #fca5a5' : 'none',
+          outline: focusedTargetId === 'no' || noDwell > 0 ? '8px solid #fca5a5' : 'none',
         }}
       >
-        NO
+        {/* Dwell fill — grows as the patient holds their gaze down */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0"
+          style={{ height: `${Math.round(noDwell * 100)}%`, backgroundColor: '#ef4444', opacity: 0.55 }}
+        />
+        <span className="relative">NO</span>
       </button>
     </div>
   )
