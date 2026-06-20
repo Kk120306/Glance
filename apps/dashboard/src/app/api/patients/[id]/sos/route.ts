@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@glance/shared/db'
-import { patients, familyMembers, messages } from '@glance/shared/db/schema'
+import { patients, patientCaregivers } from '@glance/shared/db/schema'
 import { eq } from 'drizzle-orm'
 import type { EmitRequest } from '@glance/shared/ws'
 
@@ -26,15 +26,13 @@ export async function POST(
   const timestamp = new Date().toISOString()
   console.warn(`[SOS] patient ${id} triggered SOS at ${timestamp}`)
 
-  // Find all caregivers who have sent messages to this patient (linked caregivers)
-  const sentMessages = await db
-    .select({ senderId: messages.senderId })
-    .from(messages)
-    .where(eq(messages.recipientId, id))
+  // Find all caregivers linked to this patient via patient_caregivers
+  const links = await db
+    .select({ familyMemberId: patientCaregivers.familyMemberId })
+    .from(patientCaregivers)
+    .where(eq(patientCaregivers.patientId, id))
 
-  const caregiverIds = [
-    ...new Set(sentMessages.map(m => m.senderId).filter((id): id is string => id !== null)),
-  ]
+  const caregiverIds = links.map((l) => l.familyMemberId)
 
   const wsServerUrl = process.env.WS_SERVER_URL
   if (wsServerUrl && caregiverIds.length > 0) {

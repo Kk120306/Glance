@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@glance/shared/db'
-import { messages, patients } from '@glance/shared/db/schema'
+import { messages, patients, patientCaregivers } from '@glance/shared/db/schema'
 import { eq } from 'drizzle-orm'
 import type { EmitRequest } from '@glance/shared/ws'
 
@@ -50,19 +50,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create message' }, { status: 500 })
   }
 
-  // Notify linked caregivers. There is no family↔patient join table, so we treat
-  // every caregiver who has ever messaged this patient as linked (mirrors the SOS
-  // broadcast), and emit the new message to each of their caregiver rooms.
+  // Notify linked caregivers via patient_caregivers join table
   const wsServerUrl = process.env.WS_SERVER_URL
   if (wsServerUrl) {
-    const sentMessages = await db
-      .select({ senderId: messages.senderId })
-      .from(messages)
-      .where(eq(messages.recipientId, patient.id))
+    const links = await db
+      .select({ familyMemberId: patientCaregivers.familyMemberId })
+      .from(patientCaregivers)
+      .where(eq(patientCaregivers.patientId, patient.id))
 
-    const caregiverIds = [
-      ...new Set(sentMessages.map((m) => m.senderId).filter((id): id is string => id !== null)),
-    ]
+    const caregiverIds = links.map((l) => l.familyMemberId)
 
     await Promise.allSettled(
       caregiverIds.map(async (familyMemberId) => {

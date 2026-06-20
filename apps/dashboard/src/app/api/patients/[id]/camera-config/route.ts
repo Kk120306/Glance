@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import type { EmitRequest } from '@glance/shared/ws'
 import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
+import { getFamilyMemberFromSession, getCaregiverAccess } from '@/lib/caregiver-auth'
 
 const scheduleSchema = z.object({
   dayOfWeek: z.number().int().min(0).max(6),
@@ -29,6 +30,16 @@ export async function GET(
   }
 
   const { id } = await params
+
+  const familyMember = await getFamilyMemberFromSession(session)
+  if (!familyMember) {
+    return NextResponse.json({ error: 'Family member not found' }, { status: 404 })
+  }
+  const access = await getCaregiverAccess(familyMember.id, id)
+  if (!access) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const [patient] = await db.select().from(patients).where(eq(patients.id, id))
   if (!patient) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
@@ -61,6 +72,16 @@ export async function POST(
   }
 
   const { id } = await params
+
+  const familyMember = await getFamilyMemberFromSession(session)
+  if (!familyMember) {
+    return NextResponse.json({ error: 'Family member not found' }, { status: 404 })
+  }
+  const access = await getCaregiverAccess(familyMember.id, id)
+  if (!access) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const [patient] = await db.select().from(patients).where(eq(patients.id, id))
   if (!patient) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
