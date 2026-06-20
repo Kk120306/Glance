@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { colors } from '@glance/shared/design/tokens'
 import { useInteraction } from '@glance/shared/design/components'
-import { offsetToDisplay, type GazeDirection, type GazeOffset } from '../utils/gazeUtils'
+import { offsetToDisplay, createGazeCursorSmoother, type GazeDirection, type GazeOffset } from '../utils/gazeUtils'
 
 interface GazeTrackingPanelProps {
   stream: MediaStream | null
@@ -17,6 +17,8 @@ interface GazeTrackingPanelProps {
   permissionDenied: boolean
   /** Recalibrate "looking straight ahead" to the current gaze. */
   onRecenter: () => void
+  /** Open the caregiver calibration wizard (touch action). */
+  onCalibrate: () => void
   onClose: () => void
   minimized: boolean
 }
@@ -39,18 +41,23 @@ export function GazeTrackingPanel({
   mode,
   permissionDenied,
   onRecenter,
+  onCalibrate,
   onClose,
   minimized,
 }: GazeTrackingPanelProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const dotRef = useRef<HTMLDivElement | null>(null)
+  // One Euro smoother for the live cursor, plus the timestamp of the previous
+  // frame so the filter can be frame-rate independent.
+  const cursorSmootherRef = useRef(createGazeCursorSmoother())
+  const lastFrameTsRef = useRef<number | null>(null)
   const [blinkCount, setBlinkCount] = useState(0)
   const [blinkFlash, setBlinkFlash] = useState(false)
   const prevBlinkRef = useRef(blinkSignal)
 
   // Real dwell state from the interaction layer — this reflects actual
-  // selection progress, not a cosmetic mirror.
-  const { dwellDirection, dwellProgress } = useInteraction()
+  // selection progress on whatever target the steered cursor is parked on.
+  const { focusedTargetId, dwellProgress } = useInteraction()
 
   // Attach the EXISTING stream to a second <video> for self-view. No new
   // getUserMedia → no extra MediaStream track to stop (camera-lifecycle safe).
@@ -79,15 +86,28 @@ export function GazeTrackingPanel({
     }
   }, [blinkSignal])
 
-  // Drive the live cursor directly from the tracker's per-frame offset ref via
-  // rAF — moves the dot smoothly to follow the eyes without re-rendering React
-  // on every frame. The x axis is mirrored to match the mirrored self-view.
+  // Drive the live cursor from the tracker's per-frame offset ref via rAF. The
+  // raw offset is noisy and updates only at the model's detection rate, so we
+  // run it through a One Euro filter (frame-rate independent via the measured
+  // dt) for a smooth, calm follow instead of a jittery snap. Position is owned
+  // by this loop, not React, so re-renders never reset it. The x axis is
+  // mirrored to match the mirrored self-view.
   useEffect(() => {
+    const smoother = cursorSmootherRef.current
+    smoother.reset()
+    lastFrameTsRef.current = null
     let raf = 0
-    const tick = () => {
+    const tick = (now: number) => {
       const dot = dotRef.current
       if (dot) {
-        const { x, y } = offsetToDisplay(gazeOffsetRef.current?.x ?? 0, gazeOffsetRef.current?.y ?? 0)
+        const last = lastFrameTsRef.current
+        // Clamp dt to a sane range: avoids a huge jump after the tab was
+        // backgrounded and guards against a zero/negative interval.
+        const dt = last === null ? 1 / 60 : Math.min(0.1, Math.max((now - last) / 1000, 1 / 240))
+        lastFrameTsRef.current = now
+
+        const smoothed = smoother.push(gazeOffsetRef.current?.x ?? 0, gazeOffsetRef.current?.y ?? 0, dt)
+        const { x, y } = offsetToDisplay(smoothed.x, smoothed.y)
         const leftPct = 50 - x * 45 // mirror horizontally
         const topPct = 50 + y * 45
         dot.style.left = `${leftPct}%`
@@ -135,6 +155,16 @@ export function GazeTrackingPanel({
               style={{ backgroundColor: `${colors.patient.accent}22`, color: colors.patient.accent }}
             >
               Recenter
+            </button>
+            <button
+              type="button"
+              onClick={onCalibrate}
+              aria-label="Open calibration wizard"
+              title="Caregiver: measure the patient's blink threshold and gaze baseline"
+              className="rounded px-2 py-0.5 text-xs font-medium transition-colors hover:opacity-80"
+              style={{ backgroundColor: '#3a2f12', color: colors.patient.highlight }}
+            >
+              Calibrate
             </button>
             <button
               type="button"
@@ -234,13 +264,13 @@ export function GazeTrackingPanel({
               />
             </div>
             <span className="text-[11px]" style={{ color: colors.patient.text, opacity: 0.7 }}>
-              {dwellDirection
-                ? `holding ${dwellDirection}… ${Math.round(dwellProgress * 100)}%`
+              {focusedTargetId
+                ? `holding ${focusedTargetId}… ${Math.round(dwellProgress * 100)}%`
                 : mode !== 'gaze'
                   ? 'scan mode — blink to select'
                   : gazeDirection === 'center'
-                    ? 'look up / down / left / right'
-                    : `looking ${gazeDirection}`}
+                    ? 'steer: look up / down / left / right'
+                    : `steering ${gazeDirection}`}
             </span>
           </div>
         </div>
@@ -415,21 +445,9 @@ export function GazeTrackingPanel({
         )}
       </div>
 
-      {/* Floating Gaze Dot cursor */}
-      <div
-        ref={dotRef}
-        className="absolute rounded-full pointer-events-none z-50 transition-[background-color,box-shadow] duration-150"
-        style={{
-          width: 32,
-          height: 32,
-          transform: 'translate(-50%, -50%)',
-          backgroundColor: gazeDirection === 'center' ? colors.patient.text : colors.patient.accent,
-          boxShadow: gazeDirection === 'center'
-            ? '0 0 10px rgba(255, 255, 255, 0.2)'
-            : `0 0 25px ${colors.patient.accent}`,
-          border: '2px solid #000',
-        }}
-      />
+      {/* No floating eye-tracking dot here: the InteractionProvider's
+          joystick-steered cursor is now the single on-screen cursor. The small
+          crosshair indicator in the minimized panel stays as a tracking aid. */}
 
       {/* Bottom Status & Controls Bar */}
       <div className="w-full flex items-center justify-between z-10 border-t border-white/5 pt-4 pr-[120px]">
@@ -446,6 +464,13 @@ export function GazeTrackingPanel({
             className="rounded-xl px-5 py-2 text-sm font-semibold transition-all hover:scale-105 active:scale-95 bg-green-500/10 text-green-400 border border-green-500/30"
           >
             Recenter
+          </button>
+          <button
+            type="button"
+            onClick={onCalibrate}
+            className="rounded-xl px-5 py-2 text-sm font-semibold transition-all hover:scale-105 active:scale-95 bg-amber-500/10 text-amber-300 border border-amber-500/30"
+          >
+            Calibrate
           </button>
           <button
             type="button"
