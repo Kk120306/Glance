@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Atkinson Hyperlegible',sans-serif;color:#241E2B;background:#F4EEE6}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  @keyframes glowPulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:.8;transform:scale(1.1)}}
+  @keyframes wave{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+  @keyframes mouth{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1.15)}}
+</style>
+</helmet>
+
+<div style="position:relative;width:100%;min-height:100vh;background:radial-gradient(1100px 760px at 50% 18%,#FBF6F0 0%,#F4EEE6 55%,#EFE7DC 100%);overflow:hidden;display:flex;flex-direction:column">
+  <div style="position:absolute;top:-160px;right:-120px;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,#F6DCEF,transparent 70%);opacity:.55"></div>
+  <div style="position:absolute;bottom:-180px;left:-140px;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,#E3D6FF,transparent 70%);opacity:.5"></div>
+
+  <!-- STATUS -->
+  <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:28px 44px;z-index:2">
+    <div style="display:flex;align-items:center;gap:14px;color:#9A93A0;font-weight:700;font-size:17px"><span style="font-size:20px">←</span> Messages</div>
+    <div style="display:flex;align-items:center;gap:9px;background:#fff;border-radius:999px;padding:11px 20px;box-shadow:0 1px 3px rgba(36,30,43,.06)">
+      <span style="width:10px;height:10px;border-radius:50%;background:#0E9384;display:inline-block;box-shadow:0 0 0 4px rgba(14,147,132,.18)"></span>
+      <span style="font-weight:700;font-size:16px;color:#0B6F63">Eye tracking on</span>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div style="position:relative;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2;padding:0 44px">
+
+    <!-- speaking blob -->
+    <div style="position:relative;width:188px;height:188px;margin-bottom:30px">
+      <div style="position:absolute;inset:14px;border-radius:50%;background:radial-gradient(circle at 42% 36%,#FBD9F1,#EC8FDE 50%,#A98CF7);filter:blur(30px);opacity:.6;animation:glowPulse 2.6s ease-in-out infinite"></div>
+      <div style="position:absolute;inset:0;animation:breathe 2.8s ease-in-out infinite;transform-origin:center">
+        <svg viewBox="0 0 200 200" style="width:100%;height:100%;filter:drop-shadow(0 18px 34px rgba(124,92,252,.28))">
+          <defs><radialGradient id="r_blob" cx="38%" cy="30%"><stop offset="0%" stop-color="#FBD9F1"/><stop offset="52%" stop-color="#EC8FDE"/><stop offset="100%" stop-color="#A98CF7"/></radialGradient></defs>
+          <path d="M100 18C140 18 174 46 178 90C181 124 166 156 130 172C102 184 62 180 39 156C18 134 16 96 28 68C42 36 68 18 100 18Z" fill="url(#r_blob)"/>
+          <ellipse cx="80" cy="90" rx="8" ry="11" fill="#4A2560"/><ellipse cx="120" cy="90" rx="8" ry="11" fill="#4A2560"/>
+          <ellipse cx="100" cy="126" rx="13" ry="16" fill="#4A2560" style="transform-origin:100px 126px;animation:mouth .5s ease-in-out infinite"/>
+        </svg>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+      <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#A98CF7,#EC8FDE);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;font-family:'Source Serif 4',serif">M</div>
+      <div style="text-align:left">
+        <div style="font-weight:700;font-size:18px">Maya · daughter</div>
+        <div style="font-size:15px;color:#9A93A0">Today · 2:09 PM</div>
+      </div>
+    </div>
+
+    <!-- message -->
+    <div style="font-family:'Source Serif 4',serif;font-size:52px;line-height:1.28;font-weight:500;letter-spacing:-.01em;text-align:center;max-width:980px;text-wrap:pretty;margin-bottom:32px">
+      “Hi Dad — are you comfortable right now? I'll be there by six with dinner. <span style="color:#7C5CFC">Love you.</span>”
+    </div>
+
+    <!-- playback bar -->
+    <div style="display:flex;align-items:center;gap:18px;background:#fff;border-radius:999px;padding:14px 26px;box-shadow:0 8px 22px rgba(36,30,43,.07)">
+      <div style="width:46px;height:46px;border-radius:50%;background:#7C5CFC;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px">❚❚</div>
+      <div style="display:flex;align-items:center;gap:4px;height:38px">
+        <span style="width:5px;height:14px;border-radius:3px;background:#C9B6FF;animation:wave 1s ease-in-out infinite;transform-origin:center"></span>
+        <span style="width:5px;height:30px;border-radius:3px;background:#A98CF7;animation:wave 1s ease-in-out .12s infinite;transform-origin:center"></span>
+        <span style="width:5px;height:38px;border-radius:3px;background:#7C5CFC;animation:wave 1s ease-in-out .24s infinite;transform-origin:center"></span>
+        <span style="width:5px;height:24px;border-radius:3px;background:#A98CF7;animation:wave 1s ease-in-out .36s infinite;transform-origin:center"></span>
+        <span style="width:5px;height:34px;border-radius:3px;background:#EC8FDE;animation:wave 1s ease-in-out .48s infinite;transform-origin:center"></span>
+        <span style="width:5px;height:18px;border-radius:3px;background:#C9B6FF;animation:wave 1s ease-in-out .6s infinite;transform-origin:center"></span>
+        <span style="width:5px;height:30px;border-radius:3px;background:#A98CF7;animation:wave 1s ease-in-out .72s infinite;transform-origin:center"></span>
+        <span style="width:5px;height:12px;border-radius:3px;background:#C9B6FF;animation:wave 1s ease-in-out .84s infinite;transform-origin:center"></span>
+      </div>
+      <div style="font-weight:700;font-size:16px;color:#6B6470">Reading aloud…</div>
+    </div>
+
+  </div>
+
+  <!-- ACTIONS -->
+  <div style="position:relative;z-index:2;display:flex;gap:20px;justify-content:center;padding:0 44px 38px">
+    <div style="position:relative;background:#7C5CFC;border-radius:24px;padding:26px 44px;display:flex;align-items:center;gap:16px;box-shadow:0 10px 26px rgba(124,92,252,.28)">
+      <svg viewBox="0 0 100 100" style="position:absolute;top:-6px;left:-6px;width:calc(100% + 12px);height:calc(100% + 12px);pointer-events:none" preserveAspectRatio="none"></svg>
+      <span style="font-size:28px">🔊</span>
+      <span style="font-size:24px;font-weight:700;color:#fff">Play again</span>
+    </div>
+    <div style="background:#fff;border:2px solid #E4DAD0;border-radius:24px;padding:26px 44px;display:flex;align-items:center;gap:16px;box-shadow:0 4px 14px rgba(36,30,43,.05)">
+      <span style="font-size:28px">↩</span>
+      <span style="font-size:24px;font-weight:700">Reply</span>
+    </div>
+    <div style="background:#fff;border:2px solid #E4DAD0;border-radius:24px;padding:26px 44px;display:flex;align-items:center;gap:16px;box-shadow:0 4px 14px rgba(36,30,43,.05)">
+      <span style="font-size:28px">→</span>
+      <span style="font-size:24px;font-weight:700">Next message</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

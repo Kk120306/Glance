@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import type { ServerToClientMessage, EmitRequest, CameraSchedule } from '../ws/types'
+import type {
+  ServerToClientMessage,
+  ClientToServerMessage,
+  EmitRequest,
+  CameraSchedule,
+} from '../ws/types'
 
 function isNewMessage(msg: ServerToClientMessage): msg is Extract<ServerToClientMessage, { type: 'NEW_MESSAGE' }> {
   return msg.type === 'NEW_MESSAGE'
@@ -85,5 +90,39 @@ describe('WebSocket envelope type guards', () => {
       event: { type: 'NEW_REPLY', payload: { messageId: 'm-1', reply: 'no', repliedAt: new Date().toISOString() } },
     }
     expect(req.targetFamilyMemberId).toBe('family-uuid')
+  })
+
+  it('identifies PATIENT_STATUS_CHANGE envelope', () => {
+    const online: ServerToClientMessage = {
+      type: 'PATIENT_STATUS_CHANGE',
+      payload: { patientId: 'p-1', status: 'online' },
+    }
+    const offline: ServerToClientMessage = {
+      type: 'PATIENT_STATUS_CHANGE',
+      payload: { patientId: 'p-1', status: 'offline' },
+    }
+    expect(online.type).toBe('PATIENT_STATUS_CHANGE')
+    expect(offline.payload.status).toBe('offline')
+  })
+
+  it('caregiver REGISTER carries the patientIds room list', () => {
+    const reg: ClientToServerMessage = {
+      type: 'REGISTER',
+      role: 'caregiver',
+      familyMemberId: 'family-uuid',
+      patientIds: ['p-1', 'p-2'],
+    }
+    expect(reg.role).toBe('caregiver')
+    if (reg.role === 'caregiver') {
+      expect(reg.patientIds).toEqual(['p-1', 'p-2'])
+    }
+  })
+
+  it('EmitRequest carries targetPatientAlerts and event', () => {
+    const req: EmitRequest = {
+      targetPatientAlerts: 'patient-uuid',
+      event: { type: 'SOS_TRIGGERED', payload: { patientId: 'patient-uuid', timestamp: new Date().toISOString() } },
+    }
+    expect(req.targetPatientAlerts).toBe('patient-uuid')
   })
 })

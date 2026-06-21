@@ -102,6 +102,12 @@ Glance provides an **accessible, affordable, real-time communication channel** b
 - **Patient Linking**: Caregivers link to existing patients via device token
 - **Room-Based WebSockets**: Subscribe to `patient:alerts:<patientId>` for multi-patient alerts
 
+### Phase 5: Production Hardening — Security, QA & Hard-Constraint Verification (Planned ⏳)
+- **Dashboard Test Harness**: Vitest in `@glance/dashboard`, brought into `turbo run test` (previously zero coverage)
+- **Cross-Tenant Authorization Tests**: Prove every caregiver route returns `403` for patients not linked via `patient_caregivers`; close the High data-leak risk
+- **Hard-Constraint Regression Suite**: Extract SOS amplitude + camera track-stop into pure, tested modules; static source guards enforce all four Hard Constraints in CI
+- **Green Monorepo**: `pnpm test` / `build` / `typecheck` pass across all four packages with no feature regressions
+
 ---
 
 ## Key Design Decisions
@@ -288,7 +294,8 @@ Violation of any constraint is a blocker.
 | 2: Interactive Core | 2–3 weeks | Gaze, TTS, SOS, Blob Agent | 🔄 In Progress |
 | 3: Advanced UX | 1 week | Cursor refinement (joystick steering, dwell ring) | ⏳ Planned |
 | 4: Multi-Patient | 1 week | Multi-caregiver support, permission scoping | ⏳ Planned |
-| **Total** | **~6–7 weeks** | Production-ready platform | |
+| 5: Production Hardening | 1 week | Security/QA: cross-tenant auth tests, hard-constraint regression suite | ⏳ Planned |
+| **Total** | **~7–8 weeks** | Production-ready platform | |
 
 ---
 

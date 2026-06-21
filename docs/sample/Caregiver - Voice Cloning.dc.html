@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Atkinson Hyperlegible',sans-serif;color:#241E2B;background:#F4EEE6}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  @keyframes glowPulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:.8;transform:scale(1.1)}}
+  @keyframes recWave{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+  @keyframes recDot{0%,100%{opacity:1}50%{opacity:.3}}
+</style>
+</helmet>
+
+<div style="position:relative;width:100%;min-height:100vh;background:radial-gradient(1100px 700px at 50% 8%,#FBF6F0,#F4EEE6 60%,#EFE7DC);overflow:hidden">
+
+  <!-- top bar -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 44px">
+    <div style="display:flex;align-items:center;gap:14px;color:#9A93A0;font-weight:700;font-size:17px"><span style="font-size:20px">←</span> Voice library · Eleanor Marsh</div>
+    <div style="display:flex;align-items:center;gap:10px;background:#EFE9FF;border-radius:999px;padding:10px 20px"><span style="font-size:17px">✨</span><span style="font-weight:700;font-size:15px;color:#5B3FD6">Voice cloning · step 2 of 4</span></div>
+  </div>
+
+  <!-- stepper -->
+  <div style="display:flex;gap:10px;justify-content:center;padding:6px 44px 26px">
+    <div style="display:flex;align-items:center;gap:8px"><div style="width:30px;height:30px;border-radius:50%;background:#0E9384;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700">✓</div><span style="font-weight:700;font-size:15px;color:#0B6F63">Consent</span></div>
+    <div style="width:36px;height:2px;background:#D6C9Bb;align-self:center"></div>
+    <div style="display:flex;align-items:center;gap:8px"><div style="width:30px;height:30px;border-radius:50%;background:#7C5CFC;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700">2</div><span style="font-weight:700;font-size:15px;color:#5B3FD6">Record samples</span></div>
+    <div style="width:36px;height:2px;background:#D6C9Bb;align-self:center"></div>
+    <div style="display:flex;align-items:center;gap:8px"><div style="width:30px;height:30px;border-radius:50%;background:#E7DDD0;color:#9A93A0;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700">3</div><span style="font-weight:700;font-size:15px;color:#9A93A0">Generate</span></div>
+    <div style="width:36px;height:2px;background:#D6C9Bb;align-self:center"></div>
+    <div style="display:flex;align-items:center;gap:8px"><div style="width:30px;height:30px;border-radius:50%;background:#E7DDD0;color:#9A93A0;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700">4</div><span style="font-weight:700;font-size:15px;color:#9A93A0">Preview</span></div>
+  </div>
+
+  <!-- main grid -->
+  <div style="display:grid;grid-template-columns:1fr 1.25fr;gap:24px;max-width:1180px;margin:0 auto;padding:0 44px 40px">
+
+    <!-- LEFT: recording -->
+    <div style="background:#fff;border-radius:24px;padding:36px;box-shadow:0 1px 3px rgba(36,30,43,.06);display:flex;flex-direction:column">
+      <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#9A93A0;font-weight:700;margin-bottom:14px">Read this aloud · phrase 4 of 12</div>
+      <div style="font-family:'Source Serif 4',serif;font-size:36px;line-height:1.3;font-weight:500;margin-bottom:28px;text-wrap:pretty">“Good morning, sweetheart. I'm so glad you're here with me today.”</div>
+
+      <!-- waveform recorder -->
+      <div style="background:#FBF6F0;border-radius:20px;padding:28px;margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+          <span style="width:12px;height:12px;border-radius:50%;background:#E5484D;display:inline-block;animation:recDot 1s ease-in-out infinite"></span>
+          <span style="font-weight:700;font-size:16px;color:#C62A2F">Recording · 0:06</span>
+          <span style="margin-left:auto;font-weight:700;font-size:15px;color:#9A93A0">High quality 🎙️</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;height:64px;justify-content:center">
+          <span style="width:5px;height:24px;border-radius:3px;background:#A98CF7;animation:recWave 1s ease-in-out infinite;transform-origin:center"></span>
+          <span style="width:5px;height:48px;border-radius:3px;background:#7C5CFC;animation:recWave 1s ease-in-out .1s infinite;transform-origin:center"></span>
+          <span style="width:5px;height:36px;border-radius:3px;background:#A98CF7;animation:recWave 1s ease-in-out .2s infinite;transform-origin:center"></span>
+          <span style="width:5px;height:60px;border-radius:3px;background:#EC8FDE;animation:recWave 1s ease-in-out .3s infinite;transform-origin:center"></span>
+          <span style="width:5px;height:30px;border-radius:3px;background:#7C5CFC;animation:recWave 1s ease-in-out .4s infinite;transform-origin:center"></span>
+          <span style="width:5px;height:52px;border-radius:3px;background:#A98CF7;animation:recWave 1s ease-in-out .5s infinite;transform-origin:center"></span>
+          <span style="width:5px;height:40px;border-radius:3px;background:#EC8FDE;animation:recWave 1s ease-in-out .6s infinite;transform-origin:center"></span>
+          <span style="width:5px;height:58px;border-radius:3px;background:#7C5CFC;animation:recWave 1s ease-in-out .7s infinite;transform-origin:center"></span>
+          <span style="width:5px;height:28px;border-radius:3px;background:#A98CF7;animation:recWave 1s ease-in-out .8s infinite;transform-origin:center"></span>
+          <span style="width:5px;height:44px;border-radius:3px;background:#EC8FDE;animation:recWave 1s ease-in-out .9s infinite;transform-origin:center"></span>
+          <span style="width:5px;height:34px;border-radius:3px;background:#7C5CFC;animation:recWave 1s ease-in-out 1s infinite;transform-origin:center"></span>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:14px;margin-top:auto">
+        <div style="flex:1;background:#fff;border:2px solid #E4DAD0;border-radius:16px;padding:16px;text-align:center;font-weight:700;font-size:17px;color:#6B6470">↻ Re-record</div>
+        <div style="flex:1.4;background:#7C5CFC;color:#fff;border-radius:16px;padding:16px;text-align:center;font-weight:700;font-size:17px;box-shadow:0 8px 20px rgba(124,92,252,.26)">Save &amp; next phrase →</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: progress + preview -->
+    <div style="display:flex;flex-direction:column;gap:20px">
+
+      <!-- voice preview -->
+      <div style="background:#fff;border-radius:24px;padding:28px 32px;box-shadow:0 1px 3px rgba(36,30,43,.06);display:flex;align-items:center;gap:24px">
+        <div style="position:relative;width:104px;height:104px;flex:none">
+          <div style="position:absolute;inset:8px;border-radius:50%;background:radial-gradient(circle at 42% 36%,#FBD9F1,#EC8FDE 50%,#A98CF7);filter:blur(18px);opacity:.6;animation:glowPulse 3s ease-in-out infinite"></div>
+          <div style="position:relative;width:100%;height:100%;animation:breathe 3.4s ease-in-out infinite;transform-origin:center">
+            <svg viewBox="0 0 200 200" style="width:100%;height:100%">
+              <defs><radialGradient id="vc_blob" cx="38%" cy="30%"><stop offset="0%" stop-color="#FBD9F1"/><stop offset="52%" stop-color="#EC8FDE"/><stop offset="100%" stop-color="#A98CF7"/></radialGradient></defs>
+              <path d="M100 18C140 18 174 46 178 90C181 124 166 156 130 172C102 184 62 180 39 156C18 134 16 96 28 68C42 36 68 18 100 18Z" fill="url(#vc_blob)"/>
+              <ellipse cx="80" cy="92" rx="7" ry="10" fill="#4A2560"/><ellipse cx="120" cy="92" rx="7" ry="10" fill="#4A2560"/>
+              <ellipse cx="100" cy="124" rx="11" ry="13" fill="#4A2560"/>
+            </svg>
+          </div>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#EC6FB8;font-weight:700;margin-bottom:6px">Live preview</div>
+          <div style="font-family:'Source Serif 4',serif;font-size:24px;font-weight:500;line-height:1.25">Hear Eleanor's voice take shape with each sample.</div>
+        </div>
+        <div style="width:54px;height:54px;border-radius:50%;background:#7C5CFC;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;flex:none">▶</div>
+      </div>
+
+      <!-- progress -->
+      <div style="background:#fff;border-radius:24px;padding:28px 32px;box-shadow:0 1px 3px rgba(36,30,43,.06);flex:1">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-weight:700;font-size:18px">Sample progress</div>
+          <div style="font-weight:700;font-size:18px;color:#7C5CFC">4 / 12</div>
+        </div>
+        <div style="height:10px;background:#EFE7DC;border-radius:999px;overflow:hidden;margin-bottom:22px"><div style="height:100%;width:33%;background:linear-gradient(90deg,#A98CF7,#EC8FDE);border-radius:999px"></div></div>
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;background:#F4FBF9;border-radius:12px"><span style="width:26px;height:26px;border-radius:50%;background:#0E9384;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex:none">✓</span><span style="flex:1;font-size:16px;font-weight:700;color:#6B6470">“Hello, it's so good to see you.”</span><span style="font-size:13px;color:#9A93A0;font-weight:700">0:05</span></div>
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;background:#F4FBF9;border-radius:12px"><span style="width:26px;height:26px;border-radius:50%;background:#0E9384;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex:none">✓</span><span style="flex:1;font-size:16px;font-weight:700;color:#6B6470">“I'm feeling much better today.”</span><span style="font-size:13px;color:#9A93A0;font-weight:700">0:04</span></div>
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;background:#F4FBF9;border-radius:12px"><span style="width:26px;height:26px;border-radius:50%;background:#0E9384;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex:none">✓</span><span style="flex:1;font-size:16px;font-weight:700;color:#6B6470">“Could you pass me the water, please?”</span><span style="font-size:13px;color:#9A93A0;font-weight:700">0:06</span></div>
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;background:#EFE9FF;border:2px solid #C9B6FF;border-radius:12px"><span style="width:26px;height:26px;border-radius:50%;background:#7C5CFC;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none">●</span><span style="flex:1;font-size:16px;font-weight:700;color:#5B3FD6">“Good morning, sweetheart…”</span><span style="font-size:13px;color:#7C5CFC;font-weight:700">Recording</span></div>
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:12px"><span style="width:26px;height:26px;border-radius:50%;background:#E7DDD0;flex:none"></span><span style="flex:1;font-size:16px;font-weight:700;color:#B7AEA2">“Thank you, that means a lot to me.”</span></div>
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:12px"><span style="width:26px;height:26px;border-radius:50%;background:#E7DDD0;flex:none"></span><span style="flex:1;font-size:16px;font-weight:700;color:#B7AEA2">“Let's watch the garden for a while.”</span></div>
+        </div>
+      </div>
+
+      <!-- consent note -->
+      <div style="display:flex;align-items:center;gap:12px;background:#FBF6F0;border-radius:16px;padding:16px 20px">
+        <span style="font-size:20px">🔒</span>
+        <span style="font-size:15px;color:#6B6470;font-weight:700">Voice consented by Eleanor on May 2 · stored encrypted · used only to read her messages aloud.</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -133,3 +133,6 @@ Thumbs.db
 
 # Project-specific / other caches
 .omc/
+
+# Playwright / browser-verify MCP scratch artifacts (screenshots, console logs)
+.playwright-mcp/

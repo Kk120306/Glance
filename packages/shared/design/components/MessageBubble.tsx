@@ -12,6 +12,13 @@ interface MessageBubbleProps {
   className?: string
 }
 
+/** Return a two-character initial from a name like "Maya" → "MA" or "You" → "YO". */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
+  return name.slice(0, 2).toUpperCase()
+}
+
 export function MessageBubble({
   senderName,
   content,
@@ -27,50 +34,68 @@ export function MessageBubble({
 
   return (
     <div
-      className={`flex flex-col gap-1 rounded-lg border p-4 shadow-sm ${
-        fromPatient ? 'border-amber-300 bg-amber-50' : 'border-neutral-200 bg-neutral-50'
+      className={`card-hover flex gap-4 rounded-[20px] border p-5 ${
+        fromPatient ? 'border-brand-soft bg-brand-soft/40' : 'border-line bg-surface-warm'
       } ${className}`}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-neutral-700">{senderName}</span>
-          {fromPatient && (
-            <span className="rounded bg-amber-200 px-1.5 py-0.5 text-xs font-bold text-amber-900">
-              Patient
-            </span>
-          )}
-          {isYesNo && (
-            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700">
-              Yes/No
-            </span>
-          )}
-        </div>
-        <time className="text-xs text-neutral-500" dateTime={ts.toISOString()}>
-          {formatted}
-        </time>
+      {/* Avatar */}
+      <div
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-serif text-lg font-bold text-white"
+        style={{
+          background: fromPatient
+            ? 'linear-gradient(135deg, #A98CF7, #EC8FDE)'
+            : 'linear-gradient(135deg, #5FC9BD, #0E9384)',
+        }}
+      >
+        {initials(senderName)}
       </div>
-      <p className="text-base text-neutral-900">{content}</p>
-      {reply && (
-        <div className="mt-1 flex items-center gap-2">
-          <span
-            className="rounded px-2 py-0.5 text-sm font-semibold"
-            style={{
-              backgroundColor: reply === 'yes' ? '#dcfce7' : '#fee2e2',
-              color: reply === 'yes' ? '#15803d' : '#b91c1c',
-            }}
-          >
-            Patient replied: {reply.toUpperCase()}
-          </span>
-          {repliedAt && (
-            <span className="text-xs text-neutral-400">
-              {(typeof repliedAt === 'string' ? new Date(repliedAt) : repliedAt).toLocaleTimeString(
-                [],
-                { hour: '2-digit', minute: '2-digit' },
-              )}
-            </span>
-          )}
+
+      {/* Content */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-ink-muted">{senderName}</span>
+            {fromPatient && (
+              <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand-deep">
+                Patient
+              </span>
+            )}
+            {isYesNo && (
+              <span
+                className="rounded-full px-2 py-0.5 text-xs font-bold"
+                style={{ background: '#D9F6F0', color: '#0B6F63' }}
+              >
+                Yes/No
+              </span>
+            )}
+          </div>
+          <time className="text-xs font-bold text-ink-faint" dateTime={ts.toISOString()}>
+            {formatted}
+          </time>
         </div>
-      )}
+        <p className="font-serif text-lg leading-snug text-ink">{content}</p>
+        {reply && (
+          <div className="mt-1 flex items-center gap-2">
+            <span
+              className="rounded-full px-2.5 py-0.5 text-sm font-bold"
+              style={{
+                backgroundColor: reply === 'yes' ? '#D9F6F0' : '#FDECEC',
+                color: reply === 'yes' ? '#0B6F63' : '#C62A2F',
+              }}
+            >
+              Patient replied: {reply.toUpperCase()}
+            </span>
+            {repliedAt && (
+              <span className="text-xs text-ink-faint">
+                {(typeof repliedAt === 'string' ? new Date(repliedAt) : repliedAt).toLocaleTimeString(
+                  [],
+                  { hour: '2-digit', minute: '2-digit' },
+                )}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

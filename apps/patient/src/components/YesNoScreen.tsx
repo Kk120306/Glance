@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { colors, typography } from '@glance/shared/design/tokens'
 import { useInteraction } from '@glance/shared/design/components'
 import type { InteractiveTarget } from '@glance/shared/design/components'
+import { BlobAgent } from './BlobAgent'
 
 interface YesNoScreenProps {
   question: string
@@ -33,87 +35,119 @@ export function YesNoScreen({ question, messageId, dashboardUrl, deviceToken, on
     onReply(reply)
   }
 
-  // Register YES target — gaze UP selects it
+  // Register YES target — gaze LEFT selects it
   useEffect(() => {
     const target: InteractiveTarget = {
       id: 'yes',
       ref: yesRef as React.RefObject<HTMLElement | null>,
       onSelect: () => void submitReply('yes'),
-      gazeDirection: 'up',
+      gazeDirection: 'left',
     }
     return registerTarget(target)
   }, [registerTarget, messageId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Register NO target — gaze DOWN selects it
+  // Register NO target — gaze RIGHT selects it
   useEffect(() => {
     const target: InteractiveTarget = {
       id: 'no',
       ref: noRef as React.RefObject<HTMLElement | null>,
       onSelect: () => void submitReply('no'),
-      gazeDirection: 'down',
+      gazeDirection: 'right',
     }
     return registerTarget(target)
   }, [registerTarget, messageId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { focusedTargetId, dwellProgress } = useInteraction()
-
-  // Dwell fills the target the steered cursor is currently parked on.
   const yesDwell = focusedTargetId === 'yes' ? dwellProgress : 0
   const noDwell = focusedTargetId === 'no' ? dwellProgress : 0
 
-  return (
-    <div className="flex h-screen w-full flex-col" style={{ backgroundColor: '#0A0A0A' }}>
-      {/* YES — top half */}
-      <button
-        ref={yesRef}
-        type="button"
-        onClick={() => void submitReply('yes')}
-        aria-label="Yes"
-        className="relative flex flex-1 items-center justify-center overflow-hidden text-8xl font-black transition-opacity"
-        style={{
-          backgroundColor: focusedTargetId === 'yes' ? '#16a34a' : '#15803d',
-          color: '#ffffff',
-          outline: focusedTargetId === 'yes' || yesDwell > 0 ? '8px solid #86efac' : 'none',
-        }}
-      >
-        {/* Dwell fill — grows as the patient holds their gaze up */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0"
-          style={{ height: `${Math.round(yesDwell * 100)}%`, backgroundColor: '#22c55e', opacity: 0.55 }}
-        />
-        <span className="relative">YES</span>
-      </button>
+  const R = 100
+  const CIRC = 2 * Math.PI * R
 
-      {/* Question — middle band */}
-      <div
-        className="flex items-center justify-center px-8 py-6 text-center text-2xl font-semibold"
-        style={{ backgroundColor: '#1a1a1a', color: '#e5e5e5', minHeight: '100px' }}
-      >
-        {question}
+  return (
+    <div className="absolute inset-0 z-[3] flex flex-col" style={{ background: colors.canvas }}>
+      {/* Question */}
+      <div className="relative z-[3] px-11 pb-7 pt-10 text-center">
+        <div
+          className="mb-5 inline-flex items-center gap-2.5 rounded-full bg-white px-5 py-2.5"
+          style={{ boxShadow: '0 1px 3px rgba(36,30,43,.06)' }}
+        >
+          <span style={{ fontSize: 16 }}>🙋</span>
+          <span className="font-bold" style={{ fontSize: 15, color: colors.inkMuted }}>A question for you</span>
+        </div>
+        <div
+          className="mx-auto max-w-4xl"
+          style={{ fontFamily: typography.fontFamily.serif, fontSize: 'clamp(34px,5vw,56px)', lineHeight: 1.18, fontWeight: 600, letterSpacing: '-.015em', textWrap: 'pretty', color: colors.ink }}
+        >
+          {question}
+        </div>
       </div>
 
-      {/* NO — bottom half */}
-      <button
-        ref={noRef}
-        type="button"
-        onClick={() => void submitReply('no')}
-        aria-label="No"
-        className="relative flex flex-1 items-center justify-center overflow-hidden text-8xl font-black transition-opacity"
-        style={{
-          backgroundColor: focusedTargetId === 'no' ? '#dc2626' : '#b91c1c',
-          color: '#ffffff',
-          outline: focusedTargetId === 'no' || noDwell > 0 ? '8px solid #fca5a5' : 'none',
-        }}
-      >
-        {/* Dwell fill — grows as the patient holds their gaze down */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0"
-          style={{ height: `${Math.round(noDwell * 100)}%`, backgroundColor: '#ef4444', opacity: 0.55 }}
-        />
-        <span className="relative">NO</span>
-      </button>
+      {/* Split */}
+      <div className="relative flex flex-1">
+        {/* YES — left */}
+        <button
+          ref={yesRef}
+          type="button"
+          onClick={() => void submitReply('yes')}
+          aria-label="Yes"
+          className="relative flex flex-1 flex-col items-center justify-center"
+          style={{ background: 'linear-gradient(180deg,#E4F7F2 0%,#D2F0E8 100%)', borderRight: '2px solid #F4EEE6' }}
+        >
+          <div className="relative mb-7 h-[220px] w-[220px]">
+            <svg viewBox="0 0 220 220" className="absolute inset-0" style={{ transform: 'rotate(-90deg)' }}>
+              <circle cx="110" cy="110" r={R} fill="none" stroke="rgba(14,147,132,.18)" strokeWidth="10" />
+              <circle cx="110" cy="110" r={R} fill="none" stroke={colors.patient.affirm} strokeWidth="10" strokeLinecap="round"
+                strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - yesDwell)} />
+            </svg>
+            <div className="absolute inset-[26px] flex items-center justify-center rounded-full text-white"
+              style={{ background: colors.patient.affirm, fontSize: 96, boxShadow: '0 16px 36px rgba(14,147,132,.34)' }}>✓</div>
+          </div>
+          <div style={{ fontFamily: typography.fontFamily.serif, fontSize: 72, fontWeight: 600, color: colors.patient.affirmInk, lineHeight: 1 }}>Yes</div>
+          <div className="mt-3.5 flex items-center gap-2.5 rounded-full bg-white px-6 py-3" style={{ boxShadow: '0 4px 14px rgba(14,147,132,.14)' }}>
+            <span style={{ fontSize: 22 }}>👁️</span>
+            <span className="font-bold" style={{ fontSize: 19, color: colors.patient.affirmInk }}>Look left</span>
+          </div>
+        </button>
+
+        {/* NO — right */}
+        <button
+          ref={noRef}
+          type="button"
+          onClick={() => void submitReply('no')}
+          aria-label="No"
+          className="relative flex flex-1 flex-col items-center justify-center"
+          style={{ background: 'linear-gradient(180deg,#FBEDED 0%,#F6DEDE 100%)' }}
+        >
+          <div className="relative mb-7 h-[220px] w-[220px]">
+            <svg viewBox="0 0 220 220" className="absolute inset-0" style={{ transform: 'rotate(-90deg)' }}>
+              <circle cx="110" cy="110" r={R} fill="none" stroke="rgba(154,68,68,.16)" strokeWidth="10" />
+              <circle cx="110" cy="110" r={R} fill="none" stroke="#B85656" strokeWidth="10" strokeLinecap="round"
+                strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - noDwell)} />
+            </svg>
+            <div className="absolute inset-[26px] flex items-center justify-center rounded-full text-white"
+              style={{ background: '#B85656', fontSize: 90, boxShadow: '0 16px 36px rgba(154,68,68,.28)' }}>✕</div>
+          </div>
+          <div style={{ fontFamily: typography.fontFamily.serif, fontSize: 72, fontWeight: 600, color: '#9A4444', lineHeight: 1 }}>No</div>
+          <div className="mt-3.5 flex items-center gap-2.5 rounded-full bg-white px-6 py-3" style={{ boxShadow: '0 4px 14px rgba(154,68,68,.12)' }}>
+            <span style={{ fontSize: 22 }}>👁️</span>
+            <span className="font-bold" style={{ fontSize: 19, color: '#9A4444' }}>Look right</span>
+          </div>
+        </button>
+
+        {/* Center blob */}
+        <div className="pointer-events-none absolute left-1/2 top-1/2 z-[4] h-[140px] w-[140px] -translate-x-1/2 -translate-y-1/2">
+          <div className="h-full w-full rounded-full bg-canvas p-3.5" style={{ boxShadow: '0 10px 30px rgba(36,30,43,.14)' }}>
+            <BlobAgent tone="neutral" size="100%" glow={false} float={false} />
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="relative z-[3] flex items-center justify-center gap-3.5 py-6" style={{ background: colors.canvas }}>
+        <span style={{ fontSize: 18, color: colors.inkFaint }}>💡</span>
+        <span className="font-bold" style={{ fontSize: 18, color: colors.inkMuted }}>Hold your gaze to either side to answer.</span>
+      </div>
     </div>
   )
 }

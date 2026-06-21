@@ -3,16 +3,20 @@ import { colors, typography, spacing, radius, shadow } from '../design/tokens'
 import { glancePreset } from '../design/tailwind-preset'
 
 describe('design tokens', () => {
-  it('exports patient.sos as red', () => {
-    expect(colors.patient.sos).toBe('#EF4444')
+  it('exports patient.sos as the urgent red', () => {
+    expect(colors.patient.sos).toBe('#E5484D')
   })
 
-  it('exports patient.bg as near-black', () => {
-    expect(colors.patient.bg).toBe('#0A0A0A')
+  it('exports patient.bg as the warm cream canvas', () => {
+    expect(colors.patient.bg).toBe('#F4EEE6')
   })
 
-  it('exports brand.primary', () => {
-    expect(colors.brand.primary).toBe('#1A56DB')
+  it('exports patient.accent as the brand violet', () => {
+    expect(colors.patient.accent).toBe('#7C5CFC')
+  })
+
+  it('exports brand.primary as violet', () => {
+    expect(colors.brand.primary).toBe('#7C5CFC')
   })
 
   it('exports patient font size at 3rem', () => {

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Atkinson Hyperlegible',sans-serif;color:#241E2B;background:#F4EEE6}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  @keyframes dwellY{0%{stroke-dashoffset:1257}100%{stroke-dashoffset:560}}
+</style>
+</helmet>
+
+<div style="position:relative;width:100%;min-height:100vh;display:flex;flex-direction:column;background:#F4EEE6">
+
+  <!-- top: question -->
+  <div style="position:relative;z-index:3;text-align:center;padding:40px 44px 26px">
+    <div style="display:inline-flex;align-items:center;gap:9px;background:#fff;border-radius:999px;padding:10px 20px;margin-bottom:22px;box-shadow:0 1px 3px rgba(36,30,43,.06)">
+      <span style="font-size:16px">🙋</span><span style="font-weight:700;font-size:15px;color:#6B6470">Maya is asking</span>
+    </div>
+    <div style="font-family:'Source Serif 4',serif;font-size:56px;line-height:1.18;font-weight:600;letter-spacing:-.015em;max-width:1000px;margin:0 auto;text-wrap:pretty">Are you in any pain right now?</div>
+  </div>
+
+  <!-- split -->
+  <div style="position:relative;flex:1;display:flex">
+
+    <!-- YES -->
+    <div style="flex:1;background:linear-gradient(180deg,#E4F7F2 0%,#D2F0E8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;border-right:2px solid #F4EEE6">
+      <div style="position:relative;width:220px;height:220px;margin-bottom:30px">
+        <svg viewBox="0 0 220 220" style="position:absolute;inset:0;transform:rotate(-90deg)"><circle cx="110" cy="110" r="100" fill="none" stroke="rgba(14,147,132,.18)" stroke-width="10"/><circle cx="110" cy="110" r="100" fill="none" stroke="#0E9384" stroke-width="10" stroke-linecap="round" stroke-dasharray="628" style="animation:dwellY 2s linear infinite"/></svg>
+        <div style="position:absolute;inset:26px;border-radius:50%;background:#0E9384;display:flex;align-items:center;justify-content:center;font-size:96px;color:#fff;box-shadow:0 16px 36px rgba(14,147,132,.34)">✓</div>
+      </div>
+      <div style="font-family:'Source Serif 4',serif;font-size:72px;font-weight:600;color:#0B6F63;line-height:1">Yes</div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;background:#fff;border-radius:999px;padding:12px 24px;box-shadow:0 4px 14px rgba(14,147,132,.14)">
+        <span style="font-size:22px">👁️</span><span style="font-weight:700;font-size:19px;color:#0B6F63">Look left</span>
+      </div>
+    </div>
+
+    <!-- NO -->
+    <div style="flex:1;background:linear-gradient(180deg,#FBEDED 0%,#F6DEDE 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative">
+      <div style="position:relative;width:220px;height:220px;margin-bottom:30px">
+        <svg viewBox="0 0 220 220" style="position:absolute;inset:0;transform:rotate(-90deg)"><circle cx="110" cy="110" r="100" fill="none" stroke="rgba(154,68,68,.16)" stroke-width="10"/></svg>
+        <div style="position:absolute;inset:26px;border-radius:50%;background:#B85656;display:flex;align-items:center;justify-content:center;font-size:90px;color:#fff;box-shadow:0 16px 36px rgba(154,68,68,.28)">✕</div>
+      </div>
+      <div style="font-family:'Source Serif 4',serif;font-size:72px;font-weight:600;color:#9A4444;line-height:1">No</div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;background:#fff;border-radius:999px;padding:12px 24px;box-shadow:0 4px 14px rgba(154,68,68,.12)">
+        <span style="font-size:22px">👁️</span><span style="font-weight:700;font-size:19px;color:#9A4444">Look right</span>
+      </div>
+    </div>
+
+    <!-- center blob -->
+    <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:140px;height:140px;z-index:4">
+      <div style="width:100%;height:100%;border-radius:50%;background:#F4EEE6;padding:14px;box-shadow:0 10px 30px rgba(36,30,43,.14);animation:breathe 4s ease-in-out infinite;transform-origin:center">
+        <svg viewBox="0 0 200 200" style="width:100%;height:100%">
+          <defs><radialGradient id="yn_blob" cx="40%" cy="32%"><stop offset="0%" stop-color="#D9CCFF"/><stop offset="60%" stop-color="#A99BE8"/><stop offset="100%" stop-color="#9D8FD8"/></radialGradient></defs>
+          <path d="M100 18C140 18 174 46 178 90C181 124 166 156 130 172C102 184 62 180 39 156C18 134 16 96 28 68C42 36 68 18 100 18Z" fill="url(#yn_blob)"/>
+          <ellipse cx="80" cy="96" rx="8" ry="11" fill="#3A3160"/><ellipse cx="120" cy="96" rx="8" ry="11" fill="#3A3160"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- footer -->
+  <div style="position:relative;z-index:3;display:flex;align-items:center;justify-content:center;gap:14px;padding:24px;background:#F4EEE6">
+    <span style="font-size:18px;color:#9A93A0">💡</span>
+    <span style="font-weight:700;font-size:18px;color:#6B6470">Hold your gaze to either side. Blink twice to skip this question.</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

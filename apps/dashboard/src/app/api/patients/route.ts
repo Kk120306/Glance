@@ -14,7 +14,7 @@ export async function GET() {
 
   const familyMember = await getFamilyMemberFromSession(session)
   if (!familyMember) {
-    return NextResponse.json([])
+    return NextResponse.json({ error: 'Family member not found' }, { status: 404 })
   }
 
   // Return only patients associated with the logged-in caregiver

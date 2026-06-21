@@ -6,3 +6,36 @@ html, body {
   height: 100%;
   overflow: hidden;
 }
+
+body {
+  background: #F4EEE6;
+  color: #241E2B;
+  font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Glance motion library ───────────────────────────────────────────────────
+   Motion is slow and organic — breathing, floating, filling. Nothing flashes.
+   Urgency is the only fast rhythm, reserved entirely for SOS. Keyframes live
+   here (global) so components can drive them from inline `animation:` styles,
+   mirroring the design-system reference markup. */
+@keyframes breathe   { 0%,100% { transform: scale(1); }          50% { transform: scale(1.045); } }
+@keyframes breatheLg { 0%,100% { transform: scale(1); }          50% { transform: scale(1.06); } }
+@keyframes float     { 0%,100% { transform: translateY(0); }     50% { transform: translateY(-12px); } }
+@keyframes blink     { 0%,92%,100% { transform: scaleY(1); }     96% { transform: scaleY(0.08); } }
+@keyframes glowPulse { 0%,100% { opacity: .55; transform: scale(1); } 50% { opacity: .8; transform: scale(1.08); } }
+@keyframes urgentPulse { 0%,100% { transform: scale(1); opacity: .6; } 50% { transform: scale(1.12); opacity: .25; } }
+@keyframes urgentHalo  { 0%,100% { transform: scale(1); opacity: .55; } 50% { transform: scale(1.18); opacity: .2; } }
+@keyframes ring2     { 0% { transform: scale(.7); opacity: .6; } 100% { transform: scale(1.5); opacity: 0; } }
+@keyframes wave      { 0%,100% { transform: scaleY(.35); }       50% { transform: scaleY(1); } }
+@keyframes mouth     { 0%,100% { transform: scaleY(.5); }        50% { transform: scaleY(1.15); } }
+@keyframes blobTalk  { 0%,100% { transform: scaleY(.4); }        50% { transform: scaleY(1.1); } }
+@keyframes scanGlow  { 0%,100% { box-shadow: 0 0 0 4px rgba(245,158,11,.25), 0 16px 36px rgba(245,158,11,.22); }
+                       50%     { box-shadow: 0 0 0 8px rgba(245,158,11,.18), 0 16px 40px rgba(245,158,11,.3); } }
+@keyframes scanBar   { 0% { transform: scaleX(0); }              100% { transform: scaleX(1); } }
+@keyframes blinkHint { 0%,100% { opacity: .4; }                  50% { opacity: 1; } }
+@keyframes pulseDot  { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.8); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .blob-agent, [style*="animation"] { animation: none !important; }
+}

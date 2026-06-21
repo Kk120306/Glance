@@ -224,10 +224,10 @@ export function InteractionProvider({
     const setHover = (hovering: boolean) => {
       const dot = dotRef.current
       if (dot) {
-        dot.style.backgroundColor = hovering ? '#22c55e' : '#e5e5e5'
+        dot.style.backgroundColor = hovering ? '#5B3FD6' : '#7C5CFC'
         dot.style.boxShadow = hovering
-          ? '0 0 18px 4px rgba(34,197,94,0.9)'
-          : '0 0 12px 2px rgba(255,255,255,0.6)'
+          ? '0 0 0 10px rgba(124,92,252,0.12), 0 0 32px rgba(124,92,252,0.65)'
+          : '0 0 0 6px rgba(124,92,252,0.18), 0 0 24px rgba(124,92,252,0.5)'
       }
     }
     const reportProgress = (progress: number) => {
@@ -365,7 +365,7 @@ export function InteractionProvider({
               cy={18}
               r={CURSOR_RING_RADIUS}
               fill="none"
-              stroke="rgba(255,255,255,0.25)"
+              stroke="rgba(124,92,252,0.22)"
               strokeWidth={3}
             />
             <circle
@@ -374,7 +374,7 @@ export function InteractionProvider({
               cy={18}
               r={CURSOR_RING_RADIUS}
               fill="none"
-              stroke="#22c55e"
+              stroke="#7C5CFC"
               strokeWidth={3}
               strokeLinecap="round"
               strokeDasharray={CURSOR_RING_CIRCUMFERENCE}
@@ -392,8 +392,8 @@ export function InteractionProvider({
               height: 16,
               transform: 'translate(-50%, -50%)',
               borderRadius: '9999px',
-              backgroundColor: '#e5e5e5',
-              boxShadow: '0 0 12px 2px rgba(255,255,255,0.6)',
+              backgroundColor: '#7C5CFC',
+              boxShadow: '0 0 0 6px rgba(124,92,252,0.18), 0 0 24px rgba(124,92,252,0.5)',
             }}
           />
         </div>

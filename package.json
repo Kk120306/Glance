@@ -18,5 +18,9 @@
   "engines": {
     "node": ">=22",
     "pnpm": ">=9"
+  },
+  "dependencies": {
+    "elevenlabs": "^1.59.0",
+    "framer-motion": "^12.40.0"
   }
 }

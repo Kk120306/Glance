@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { colors } from '@glance/shared/design/tokens'
+import { colors, typography } from '@glance/shared/design/tokens'
 import { offsetToDisplay, type GazeOffset } from '../utils/gazeUtils'
 import { computeEarThreshold } from '../utils/calibration'
 
@@ -150,13 +150,13 @@ export function CalibrationScreen({
         type="button"
         onClick={onExit}
         aria-label="Skip calibration"
-        className="fixed top-4 right-4 rounded-full px-4 py-2 text-sm font-semibold"
-        style={{ backgroundColor: '#2a2a2a', color: colors.patient.text, border: '1px solid #444' }}
+        className="fixed top-4 right-4 rounded-full bg-white px-4 py-2 text-sm font-bold"
+        style={{ color: colors.inkMuted, border: '1px solid #E4DAD0' }}
       >
         Skip ✕
       </button>
 
-      <h1 className="text-center text-3xl font-bold">Gaze &amp; Blink Calibration</h1>
+      <h1 className="text-center text-3xl font-semibold" style={{ fontFamily: typography.fontFamily.serif }}>Gaze &amp; Blink Calibration</h1>
       <p className="text-center text-sm opacity-60">
         Runs automatically — no buttons needed. Just follow the on-screen prompts.
       </p>
@@ -211,7 +211,7 @@ function MeasureStep({
       </h2>
       <p className="text-center text-xl">{instruction}</p>
       <div className="text-6xl font-black">{remaining}</div>
-      <div className="h-4 w-full overflow-hidden rounded-full" style={{ backgroundColor: '#2a2a2a' }}>
+      <div className="h-4 w-full overflow-hidden rounded-full" style={{ backgroundColor: '#EFE7DC' }}>
         <div
           className="h-full rounded-full transition-[width] duration-75"
           style={{ width: `${Math.round(progress * 100)}%`, backgroundColor: colors.patient.accent }}
@@ -234,7 +234,7 @@ function ResultStep({
   const bar = (label: string, value: number, color: string) => (
     <div className="flex items-center gap-3">
       <span className="w-28 text-right text-sm">{label}</span>
-      <div className="h-6 flex-1 overflow-hidden rounded" style={{ backgroundColor: '#2a2a2a' }}>
+      <div className="h-6 flex-1 overflow-hidden rounded" style={{ backgroundColor: '#EFE7DC' }}>
         <div
           className="h-full rounded"
           style={{ width: `${Math.round((value / max) * 100)}%`, backgroundColor: color }}
@@ -249,8 +249,8 @@ function ResultStep({
         Recommended Threshold
       </h2>
       <div className="flex w-full flex-col gap-3">
-        {bar('Open EAR', openEAR, '#22c55e')}
-        {bar('Closed EAR', closedEAR, '#ef4444')}
+        {bar('Open EAR', openEAR, '#1F9D63')}
+        {bar('Closed EAR', closedEAR, '#E5484D')}
         {bar('Threshold', threshold, colors.patient.accent)}
       </div>
       <p className="text-center text-sm opacity-70">
@@ -297,11 +297,11 @@ function DriftStep({ gazeOffsetRef }: { gazeOffsetRef: React.RefObject<GazeOffse
       </p>
       <div
         className="relative rounded-xl"
-        style={{ width: 280, height: 280, backgroundColor: '#161616', border: '1px solid #333' }}
+        style={{ width: 280, height: 280, backgroundColor: '#FBF6F0', border: '1px solid #E4DAD0' }}
       >
         {/* center crosshair */}
-        <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2" style={{ backgroundColor: '#2a2a2a' }} />
-        <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2" style={{ backgroundColor: '#2a2a2a' }} />
+        <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2" style={{ backgroundColor: '#EFE7DC' }} />
+        <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2" style={{ backgroundColor: '#EFE7DC' }} />
         {/* activation threshold lines */}
         <div className="absolute top-0 h-full w-px" style={{ left: lo, backgroundColor: `${colors.patient.accent}55` }} />
         <div className="absolute top-0 h-full w-px" style={{ left: hi, backgroundColor: `${colors.patient.accent}55` }} />

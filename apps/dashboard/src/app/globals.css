@@ -1,3 +1,158 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Global reset & defaults ──────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  background: #F4EEE6;
+  color: #241E2B;
+  font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+::selection {
+  background: #EFE9FF;
+  color: #5B3FD6;
+}
+
+/* ── Smooth scrollbar ─────────────────────────────────────────────────────── */
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #E4DAD0 transparent;
+}
+
+/* WebKit */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D6C9BB;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C4B7A7;
+}
+
+/* ── Global interactive transitions ───────────────────────────────────────── */
+
+button,
+a,
+input,
+textarea,
+select {
+  transition: background-color 180ms ease,
+              border-color 180ms ease,
+              color 180ms ease,
+              box-shadow 180ms ease,
+              opacity 180ms ease;
+}
+
+/* ── Utility: card hover lift ─────────────────────────────────────────────── */
+
+.card-hover {
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px rgba(36, 30, 43, 0.12);
+}
+
+/* ── Utility: section label (small-caps category header) ──────────────────── */
+
+.section-label {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9A93A0;
+  font-weight: 700;
+}
+
+/* ── Utility: stat number (serif metric display) ──────────────────────────── */
+
+.stat-number {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* ── Animation keyframes ──────────────────────────────────────────────────── */
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .4; transform: scale(.8); }
+}
+
+@keyframes sosBlink {
+  0%, 100% { background: #FDECEC; }
+  50%      { background: #FBDADA; }
+}
+
+@keyframes recWave {
+  0%, 100% { transform: scaleY(.3); }
+  50%      { transform: scaleY(1); }
+}
+
+@keyframes recDot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .3; }
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.045); }
+}
+
+@keyframes glowPulse {
+  0%, 100% { opacity: .55; transform: scale(1); }
+  50%      { opacity: .8;  transform: scale(1.08); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  96%           { transform: scaleY(0.08); }
+}
+
+@keyframes dwellRing {
+  0%   { stroke-dashoffset: 408; }
+  100% { stroke-dashoffset: 0; }
+}
+
+@keyframes urgentPulse {
+  0%, 100% { transform: scale(1);    opacity: .6; }
+  50%      { transform: scale(1.12); opacity: .25; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Apply fade-in to main content areas */
+main {
+  animation: fadeIn 300ms ease-out;
+}

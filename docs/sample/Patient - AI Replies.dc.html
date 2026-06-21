@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Atkinson Hyperlegible',sans-serif;color:#241E2B;background:#F4EEE6}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  @keyframes glowPulse{0%,100%{opacity:.45;transform:scale(1)}50%{opacity:.75;transform:scale(1.1)}}
+  @keyframes dwellA{0%{stroke-dashoffset:691}100%{stroke-dashoffset:300}}
+</style>
+</helmet>
+
+<div style="position:relative;width:100%;min-height:100vh;background:radial-gradient(1100px 720px at 50% 14%,#FBF6F0 0%,#F4EEE6 55%,#EFE7DC 100%);overflow:hidden;display:flex;flex-direction:column">
+  <div style="position:absolute;top:-160px;left:-120px;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,#E3D6FF,transparent 70%);opacity:.5"></div>
+  <div style="position:absolute;bottom:-180px;right:-120px;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,#D6F3EC,transparent 70%);opacity:.5"></div>
+
+  <!-- header with mini blob -->
+  <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:26px 44px 8px;z-index:2">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="width:58px;height:58px;animation:breathe 3s ease-in-out infinite;transform-origin:center">
+        <svg viewBox="0 0 200 200" style="width:100%;height:100%">
+          <defs><radialGradient id="a_mini" cx="38%" cy="30%"><stop offset="0%" stop-color="#BFE9E2"/><stop offset="55%" stop-color="#5FC9BD"/><stop offset="100%" stop-color="#A98CF7"/></radialGradient></defs>
+          <path d="M100 18C140 18 174 46 178 90C181 124 166 156 130 172C102 184 62 180 39 156C18 134 16 96 28 68C42 36 68 18 100 18Z" fill="url(#a_mini)"/>
+          <ellipse cx="80" cy="94" rx="9" ry="13" fill="#0C3F3A"/><ellipse cx="120" cy="94" rx="9" ry="13" fill="#0C3F3A"/>
+          <circle cx="83" cy="89" r="3" fill="#fff"/><circle cx="123" cy="89" r="3" fill="#fff"/>
+        </svg>
+      </div>
+      <div>
+        <div style="font-family:'Source Serif 4',serif;font-size:30px;font-weight:600;letter-spacing:-.01em">Choose how to reply</div>
+        <div style="font-size:17px;color:#6B6470">To Maya · “Are you comfortable?”</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:9px;background:#EFE9FF;border-radius:999px;padding:11px 20px">
+      <span style="font-size:18px">✨</span><span style="font-weight:700;font-size:16px;color:#5B3FD6">AI suggested · in your words</span>
+    </div>
+  </div>
+
+  <!-- reply grid -->
+  <div style="position:relative;flex:1;display:flex;flex-direction:column;justify-content:center;z-index:2;padding:8px 44px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px">
+
+      <!-- card 1 (dwelling) -->
+      <div style="position:relative;background:#fff;border:3px solid #7C5CFC;border-radius:26px;padding:34px 36px;box-shadow:0 12px 30px rgba(124,92,252,.16)">
+        <svg viewBox="0 0 100 100" style="position:absolute;top:20px;right:20px;width:50px;height:50px;transform:rotate(-90deg)"><circle cx="50" cy="50" r="44" fill="none" stroke="#EFE9FF" stroke-width="6"/><circle cx="50" cy="50" r="44" fill="none" stroke="#7C5CFC" stroke-width="6" stroke-linecap="round" stroke-dasharray="276" style="animation:dwellA 1.8s linear infinite"/></svg>
+        <div style="font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:#7C5CFC;font-weight:700;margin-bottom:14px">Reassuring</div>
+        <div style="font-family:'Source Serif 4',serif;font-size:32px;line-height:1.3;font-weight:500;text-wrap:pretty">“Yes, I'm comfortable. Looking forward to dinner with you.”</div>
+      </div>
+
+      <!-- card 2 -->
+      <div style="position:relative;background:#fff;border:2px solid #ECE2D6;border-radius:26px;padding:34px 36px;box-shadow:0 6px 18px rgba(36,30,43,.05)">
+        <div style="position:absolute;top:24px;right:24px;width:42px;height:42px;border-radius:50%;border:5px solid #EFE9FF"></div>
+        <div style="font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:#0E9384;font-weight:700;margin-bottom:14px">Asking for something</div>
+        <div style="font-family:'Source Serif 4',serif;font-size:32px;line-height:1.3;font-weight:500;text-wrap:pretty">“Could you bring my reading glasses too? Thank you, love.”</div>
+      </div>
+
+      <!-- card 3 -->
+      <div style="position:relative;background:#fff;border:2px solid #ECE2D6;border-radius:26px;padding:34px 36px;box-shadow:0 6px 18px rgba(36,30,43,.05)">
+        <div style="position:absolute;top:24px;right:24px;width:42px;height:42px;border-radius:50%;border:5px solid #EFE9FF"></div>
+        <div style="font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:#EC6FB8;font-weight:700;margin-bottom:14px">Warm</div>
+        <div style="font-family:'Source Serif 4',serif;font-size:32px;line-height:1.3;font-weight:500;text-wrap:pretty">“I'm okay. It always brightens my day when you visit.”</div>
+      </div>
+
+      <!-- card 4: compose -->
+      <div style="position:relative;background:#FBF6F0;border:2px dashed #D6C9Bb;border-radius:26px;padding:34px 36px;display:flex;align-items:center;gap:22px">
+        <div style="width:64px;height:64px;border-radius:18px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;flex:none;box-shadow:0 2px 6px rgba(36,30,43,.06)">⌨️</div>
+        <div>
+          <div style="font-size:26px;font-weight:700;margin-bottom:4px">Say something else</div>
+          <div style="font-size:17px;color:#6B6470">Spell it out letter by letter, or speak a word</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- footer -->
+  <div style="position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:18px 44px 34px">
+    <div style="display:flex;align-items:center;gap:12px;color:#9A93A0;font-weight:700;font-size:17px"><span style="font-size:20px">←</span> Back to message</div>
+    <div style="display:flex;align-items:center;gap:12px;background:#fff;border:2px solid #E4DAD0;border-radius:999px;padding:14px 26px"><span style="font-size:20px">🔄</span><span style="font-weight:700;font-size:17px;color:#6B6470">More suggestions</span></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

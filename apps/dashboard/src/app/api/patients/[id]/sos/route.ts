@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@glance/shared/db'
-import { patients, patientCaregivers } from '@glance/shared/db/schema'
+import { patients } from '@glance/shared/db/schema'
 import { eq } from 'drizzle-orm'
 import type { EmitRequest } from '@glance/shared/ws'
 
@@ -26,35 +26,26 @@ export async function POST(
   const timestamp = new Date().toISOString()
   console.warn(`[SOS] patient ${id} triggered SOS at ${timestamp}`)
 
-  // Find all caregivers linked to this patient via patient_caregivers
-  const links = await db
-    .select({ familyMemberId: patientCaregivers.familyMemberId })
-    .from(patientCaregivers)
-    .where(eq(patientCaregivers.patientId, id))
-
-  const caregiverIds = links.map((l) => l.familyMemberId)
-
+  // Fan out to every linked caregiver in a single broadcast to the patient's
+  // alerts room — the ws-server delivers it to all caregivers currently online.
   const wsServerUrl = process.env.WS_SERVER_URL
-  if (wsServerUrl && caregiverIds.length > 0) {
-    await Promise.allSettled(
-      caregiverIds.map(async (familyMemberId) => {
-        const emitBody: EmitRequest = {
-          targetFamilyMemberId: familyMemberId,
-          event: {
-            type: 'SOS_TRIGGERED',
-            payload: { patientId: id, timestamp },
-          },
-        }
-        await fetch(`${wsServerUrl}/emit`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-internal-secret': process.env.WS_INTERNAL_SECRET ?? '',
-          },
-          body: JSON.stringify(emitBody),
-        })
-      }),
-    )
+  if (wsServerUrl) {
+    const emitBody: EmitRequest = {
+      targetPatientAlerts: id,
+      event: { type: 'SOS_TRIGGERED', payload: { patientId: id, timestamp } },
+    }
+    try {
+      await fetch(`${wsServerUrl}/emit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': process.env.WS_INTERNAL_SECRET ?? '',
+        },
+        body: JSON.stringify(emitBody),
+      })
+    } catch (err) {
+      console.warn('[sos] ws-server unreachable:', err)
+    }
   }
 
   return NextResponse.json({ ok: true, timestamp })

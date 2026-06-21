@@ -95,18 +95,22 @@ export async function POST(
 
   const { cameraOverrideActive, schedules } = parsed.data
 
-  if (cameraOverrideActive !== undefined) {
-    await db.update(patients).set({ cameraOverrideActive }).where(eq(patients.id, id))
-  }
-
-  if (schedules !== undefined) {
-    await db.delete(cameraSchedules).where(eq(cameraSchedules.patientId, id))
-    if (schedules.length > 0) {
-      await db.insert(cameraSchedules).values(
-        schedules.map(s => ({ patientId: id, ...s })),
-      )
+  // Apply the override flip and the full schedule replace atomically so a failure
+  // mid-write can never leave the patient with zero schedules.
+  await db.transaction(async (tx) => {
+    if (cameraOverrideActive !== undefined) {
+      await tx.update(patients).set({ cameraOverrideActive }).where(eq(patients.id, id))
     }
-  }
+
+    if (schedules !== undefined) {
+      await tx.delete(cameraSchedules).where(eq(cameraSchedules.patientId, id))
+      if (schedules.length > 0) {
+        await tx.insert(cameraSchedules).values(
+          schedules.map(s => ({ patientId: id, ...s })),
+        )
+      }
+    }
+  })
 
   const updatedSchedules = await db
     .select()

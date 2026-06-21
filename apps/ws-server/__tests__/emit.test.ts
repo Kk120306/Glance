@@ -19,13 +19,20 @@ beforeAll(async () => {
       res.status(401).json({ error: 'Unauthorized' })
       return
     }
-    const body = req.body as { targetPatientId?: unknown; targetFamilyMemberId?: unknown; event?: unknown }
+    const body = req.body as {
+      targetPatientId?: unknown
+      targetFamilyMemberId?: unknown
+      targetPatientAlerts?: unknown
+      event?: unknown
+    }
     if (!body?.event) {
       res.status(400).json({ error: 'Invalid body: missing event' })
       return
     }
-    if (!body.targetPatientId && !body.targetFamilyMemberId) {
-      res.status(400).json({ error: 'Invalid body: must specify targetPatientId or targetFamilyMemberId' })
+    if (!body.targetPatientId && !body.targetFamilyMemberId && !body.targetPatientAlerts) {
+      res.status(400).json({
+        error: 'Invalid body: must specify targetPatientId, targetFamilyMemberId, or targetPatientAlerts',
+      })
       return
     }
     res.status(204).end()
@@ -77,6 +84,15 @@ describe('ws-server /emit', () => {
     const res = await post(
       '/emit',
       { targetFamilyMemberId: 'family-uuid', event: { type: 'NEW_REPLY', payload: { messageId: 'm-1', reply: 'yes', repliedAt: new Date().toISOString() } } },
+      { 'x-internal-secret': SECRET },
+    )
+    expect(res.status).toBe(204)
+  })
+
+  it('returns 204 with valid secret, targetPatientAlerts, and event', async () => {
+    const res = await post(
+      '/emit',
+      { targetPatientAlerts: 'patient-uuid', event: { type: 'SOS_TRIGGERED', payload: { patientId: 'patient-uuid', timestamp: new Date().toISOString() } } },
       { 'x-internal-secret': SECRET },
     )
     expect(res.status).toBe(204)

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Atkinson Hyperlegible',sans-serif;color:#241E2B;background:#F4EEE6}
+  @keyframes dwellK{0%{stroke-dashoffset:251}100%{stroke-dashoffset:70}}
+  @keyframes cursorGlow{0%,100%{box-shadow:0 0 0 6px rgba(124,92,252,.18),0 0 24px rgba(124,92,252,.5)}50%{box-shadow:0 0 0 10px rgba(124,92,252,.12),0 0 32px rgba(124,92,252,.65)}}
+  @keyframes caret{0%,100%{opacity:1}50%{opacity:0}}
+</style>
+</helmet>
+
+<div style="position:relative;width:100%;min-height:100vh;background:radial-gradient(1100px 700px at 50% 10%,#FBF6F0,#F4EEE6 60%,#EFE7DC);display:flex;flex-direction:column;overflow:hidden">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 44px;z-index:2">
+    <div style="display:flex;align-items:center;gap:14px;color:#9A93A0;font-weight:700;font-size:17px"><span style="font-size:20px">←</span> Reply to Maya</div>
+    <div style="display:flex;gap:12px">
+      <div style="display:flex;align-items:center;gap:9px;background:#fff;border-radius:999px;padding:10px 18px;box-shadow:0 1px 3px rgba(36,30,43,.06)">
+        <span style="width:9px;height:9px;border-radius:50%;background:#0E9384;display:inline-block"></span>
+        <span style="font-weight:700;font-size:15px;color:#0B6F63">Gaze locked</span>
+      </div>
+      <div style="background:#EFE9FF;border-radius:999px;padding:10px 18px;font-weight:700;font-size:15px;color:#5B3FD6">Dwell · 1.4s</div>
+    </div>
+  </div>
+
+  <!-- composed text -->
+  <div style="padding:6px 44px 18px;z-index:2">
+    <div style="background:#fff;border-radius:22px;padding:28px 34px;box-shadow:0 4px 16px rgba(36,30,43,.06);min-height:104px;display:flex;align-items:center">
+      <span style="font-family:'Source Serif 4',serif;font-size:40px;font-weight:500">I would love some te<span style="display:inline-block;width:3px;height:42px;background:#7C5CFC;margin-left:3px;vertical-align:middle;animation:caret 1s steps(1) infinite"></span></span>
+    </div>
+  </div>
+
+  <!-- predictions -->
+  <div style="display:flex;gap:14px;padding:0 44px 18px;z-index:2">
+    <div style="display:flex;align-items:center;gap:8px;font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:#9A93A0;font-weight:700;padding-right:6px">✨ Suggested</div>
+    <div style="background:#EFE9FF;color:#5B3FD6;border-radius:14px;padding:14px 26px;font-size:22px;font-weight:700">tea</div>
+    <div style="background:#fff;border:2px solid #ECE2D6;border-radius:14px;padding:14px 26px;font-size:22px;font-weight:700">tea, please</div>
+    <div style="background:#fff;border:2px solid #ECE2D6;border-radius:14px;padding:14px 26px;font-size:22px;font-weight:700">television</div>
+    <div style="background:#fff;border:2px solid #ECE2D6;border-radius:14px;padding:14px 26px;font-size:22px;font-weight:700">tea with honey</div>
+  </div>
+
+  <!-- keyboard -->
+  <div style="position:relative;flex:1;padding:6px 44px 36px;z-index:2;display:flex;flex-direction:column;justify-content:center">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <!-- row 1 -->
+      <div style="display:flex;gap:12px;justify-content:center">
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">Q</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">W</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">E</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">R</div>
+        <!-- active key T -->
+        <div style="position:relative;flex:1;max-width:118px;height:88px;background:#7C5CFC;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;color:#fff;box-shadow:0 10px 24px rgba(124,92,252,.32)">
+          T
+          <svg viewBox="0 0 100 100" style="position:absolute;inset:-7px;width:calc(100% + 14px);height:calc(100% + 14px)"></svg>
+        </div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">Y</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">U</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">I</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">O</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">P</div>
+      </div>
+      <!-- row 2 -->
+      <div style="display:flex;gap:12px;justify-content:center;padding:0 56px">
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">A</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">S</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">D</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">F</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">G</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">H</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">J</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">K</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">L</div>
+      </div>
+      <!-- row 3 -->
+      <div style="display:flex;gap:12px;justify-content:center">
+        <div style="flex:1;max-width:150px;height:88px;background:#F1E8DC;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#6B6470">⌫ Delete</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">Z</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">X</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">C</div>
+        <div style="flex:1;max-width:118px;height:88px;background:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;box-shadow:0 2px 6px rgba(36,30,43,.05)">V</div>
+        <div style="flex:1;max-width:240px;height:88px;background:#D9F6F0;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#0B6F63;gap:10px">␣ Space</div>
+        <div style="flex:1;max-width:170px;height:88px;background:#7C5CFC;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff;gap:8px;box-shadow:0 6px 16px rgba(124,92,252,.28)">🔊 Speak</div>
+      </div>
+    </div>
+
+    <!-- gaze cursor + dwell ring over T key area -->
+    <div style="position:absolute;left:calc(50% + 0px);top:198px;transform:translate(-50%,-50%);width:104px;height:104px;pointer-events:none">
+      <svg viewBox="0 0 100 100" style="position:absolute;inset:0;transform:rotate(-90deg)"><circle cx="50" cy="50" r="40" fill="none" stroke="rgba(124,92,252,.22)" stroke-width="6"/><circle cx="50" cy="50" r="40" fill="none" stroke="#7C5CFC" stroke-width="6" stroke-linecap="round" stroke-dasharray="251" style="animation:dwellK 1.4s linear infinite"/></svg>
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:20px;height:20px;border-radius:50%;background:#7C5CFC;animation:cursorGlow 1.6s ease-in-out infinite"></div>
+    </div>
+  </div>
+
+  <!-- footnote -->
+  <div style="text-align:center;padding-bottom:26px;z-index:2">
+    <span style="display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:16px;color:#6B6470"><span style="width:14px;height:14px;border-radius:50%;background:#7C5CFC;display:inline-block"></span> The glowing dot follows your eyes — rest on a key to type it.</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

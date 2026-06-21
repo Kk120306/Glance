@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { isCameraWindowActive } from '@glance/shared/utils/camera-schedule'
 import type { CameraSchedule } from '@glance/shared/ws'
+import { stopAllTracks } from '../utils/cameraTracks'
 
 interface CameraStreamState {
   stream: MediaStream | null
@@ -20,12 +21,6 @@ export function useCameraStream({ schedules, overrideActive }: UseCameraStreamOp
   const [permissionDenied, setPermissionDenied] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-
-  function stopAllTracks(s: MediaStream) {
-    for (const track of s.getVideoTracks()) {
-      track.stop()
-    }
-  }
 
   useEffect(() => {
     const cameraActive = isCameraWindowActive(schedules, overrideActive)

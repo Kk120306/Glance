@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const publicPaths = ['/login', '/api/auth']
+const publicPaths = ['/login', '/signup', '/api/auth']
 const SESSION_COOKIE = 'better-auth.session_token'
 
 export function middleware(req: NextRequest) {

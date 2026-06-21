@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@glance/shared/db'
-import { messages, patients, patientCaregivers } from '@glance/shared/db/schema'
+import { messages, patients } from '@glance/shared/db/schema'
 import { eq } from 'drizzle-orm'
 import type { EmitRequest } from '@glance/shared/ws'
 
@@ -50,32 +50,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create message' }, { status: 500 })
   }
 
-  // Notify linked caregivers via patient_caregivers join table
+  // Notify every linked caregiver in one broadcast to the patient's alerts room.
   const wsServerUrl = process.env.WS_SERVER_URL
   if (wsServerUrl) {
-    const links = await db
-      .select({ familyMemberId: patientCaregivers.familyMemberId })
-      .from(patientCaregivers)
-      .where(eq(patientCaregivers.patientId, patient.id))
-
-    const caregiverIds = links.map((l) => l.familyMemberId)
-
-    await Promise.allSettled(
-      caregiverIds.map(async (familyMemberId) => {
-        const emitBody: EmitRequest = {
-          targetFamilyMemberId: familyMemberId,
-          event: { type: 'NEW_MESSAGE', payload: message },
-        }
-        await fetch(`${wsServerUrl}/emit`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-internal-secret': process.env.WS_INTERNAL_SECRET ?? '',
-          },
-          body: JSON.stringify(emitBody),
-        })
-      }),
-    )
+    const emitBody: EmitRequest = {
+      targetPatientAlerts: patient.id,
+      event: { type: 'NEW_MESSAGE', payload: message },
+    }
+    try {
+      await fetch(`${wsServerUrl}/emit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': process.env.WS_INTERNAL_SECRET ?? '',
+        },
+        body: JSON.stringify(emitBody),
+      })
+    } catch (err) {
+      console.warn('[messages/patient] ws-server unreachable:', err)
+    }
   }
 
   return NextResponse.json(message, { status: 201 })
