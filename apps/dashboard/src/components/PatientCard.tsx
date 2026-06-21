@@ -6,13 +6,13 @@ interface PatientCardProps {
   name: string
   isOnline: boolean
   isSOS: boolean
-  gazeStatus?: string // '97%', 'Calibration low', 'Limited', '91%'
-  inputMode?: string // 'Dwell', 'Blink scan'
-  lastActive?: string // 'Now', '2m ago', '11m ago', '40m ago'
+  // Per-patient telemetry (gaze accuracy, input mode, last-active). Not yet
+  // instrumented end-to-end, so callers omit these and the card shows "—".
+  gazeStatus?: string
+  inputMode?: string
+  lastActive?: string
   latestMessage?: string // Latest text message preview
   latestMessageTime?: string // '8s ago', '2m ago' etc
-  roomInfo?: string // e.g. 'Room 214'
-  age?: number // e.g. 72
 }
 
 export function PatientCard({
@@ -20,13 +20,11 @@ export function PatientCard({
   name,
   isOnline,
   isSOS,
-  gazeStatus = '95%',
-  inputMode = 'Dwell',
-  lastActive = 'Now',
+  gazeStatus = '—',
+  inputMode = '—',
+  lastActive = '—',
   latestMessage,
   latestMessageTime,
-  roomInfo = 'Room 200',
-  age = 70,
 }: PatientCardProps) {
   // Get two-letter initials
   const initials = name
@@ -92,9 +90,6 @@ export function PatientCard({
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-bold text-[20px] text-ink truncate">{name}</div>
-            <div className="text-[14px] text-ink-faint">
-              {roomInfo} · {age} yrs
-            </div>
           </div>
           <div className={`rounded-full px-[14px] py-[7px] text-[13px] font-bold ${statusBadgeBg}`}>
             {statusText}

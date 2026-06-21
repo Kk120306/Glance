@@ -2,11 +2,10 @@ import React from 'react'
 
 interface SOSBannerProps {
   patientName: string
-  roomInfo?: string
   onRespond?: () => void
 }
 
-export function SOSBanner({ patientName, roomInfo = 'Room 214', onRespond }: SOSBannerProps) {
+export function SOSBanner({ patientName, onRespond }: SOSBannerProps) {
   return (
     <div 
       className="flex items-center gap-[18px] border-2 border-[#F3B7B7] rounded-[18px] p-[18px] px-[24px] mb-6 animate-[sosBlink_1.6s_ease-in-out_infinite]"
@@ -16,10 +15,10 @@ export function SOSBanner({ patientName, roomInfo = 'Room 214', onRespond }: SOS
       </div>
       <div className="flex-1">
         <div className="font-bold text-[19px] text-[#C62A2F]">
-          {patientName} raised an SOS · {roomInfo}
+          {patientName} raised an SOS
         </div>
         <div className="text-[15px] text-[#9A4444]">
-          Care team notified · location shared
+          Care team notified
         </div>
       </div>
       {onRespond && (

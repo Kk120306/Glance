@@ -128,7 +128,6 @@ export default function DashboardOverviewPage() {
       {activeSosPatient && (
         <SOSBanner
           patientName={activeSosPatient.name}
-          roomInfo="Room 214"
           onRespond={() => setSosAlert(null)}
         />
       )}
@@ -192,32 +191,15 @@ export default function DashboardOverviewPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
-          {filteredPatients.map((patient, index) => {
-            const isOnline = onlineStatus[patient.id] === 'online'
-            const isSOS = sosAlert?.patientId === patient.id
-
-            // Alternate mock attributes to match mock design
-            const gazeOptions = ['97%', 'Calibration low', '91%', '95%']
-            const inputOptions = ['Dwell', 'Blink scan', 'Dwell', 'Dwell']
-            const lastActiveOptions = ['2m ago', 'Now', '11m ago', '40m ago']
-
-            return (
-              <PatientCard
-                key={patient.id}
-                id={patient.id}
-                name={patient.name}
-                isOnline={isOnline}
-                isSOS={isSOS}
-                gazeStatus={isSOS ? 'Calibration low' : gazeOptions[index % gazeOptions.length]}
-                inputMode={inputOptions[index % inputOptions.length]}
-                lastActive={isSOS ? 'Now' : lastActiveOptions[index % lastActiveOptions.length]}
-                roomInfo={`Room ${200 + index * 5}`}
-                age={60 + (index * 7) % 25}
-                latestMessage={isSOS ? '“I need help now”' : undefined}
-                latestMessageTime={isSOS ? '8s ago' : undefined}
-              />
-            )
-          })}
+          {filteredPatients.map((patient) => (
+            <PatientCard
+              key={patient.id}
+              id={patient.id}
+              name={patient.name}
+              isOnline={onlineStatus[patient.id] === 'online'}
+              isSOS={sosAlert?.patientId === patient.id}
+            />
+          ))}
         </div>
       )}
 
