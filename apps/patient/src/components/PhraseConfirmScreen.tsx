@@ -32,7 +32,6 @@ export function PhraseConfirmScreen({ phrase, onConfirm, onCancel }: PhraseConfi
         gradient="linear-gradient(180deg,#E4F7F2 0%,#D2F0E8 100%)"
         accent={colors.patient.affirm}
         ink={colors.patient.affirmInk}
-        fillFrom="bottom"
         onSelect={onConfirm}
       />
 
@@ -57,7 +56,6 @@ export function PhraseConfirmScreen({ phrase, onConfirm, onCancel }: PhraseConfi
         gradient="linear-gradient(180deg,#FBEDED 0%,#F6DEDE 100%)"
         accent="#B85656"
         ink="#9A4444"
-        fillFrom="top"
         onSelect={onCancel}
       />
     </div>
@@ -65,7 +63,7 @@ export function PhraseConfirmScreen({ phrase, onConfirm, onCancel }: PhraseConfi
 }
 
 function ConfirmTarget({
-  id, icon, label, gradient, accent, ink, fillFrom, onSelect,
+  id, icon, label, gradient, accent, ink, onSelect,
 }: {
   id: string
   icon: string
@@ -73,10 +71,11 @@ function ConfirmTarget({
   gradient: string
   accent: string
   ink: string
-  fillFrom: 'top' | 'bottom'
   onSelect: () => void
 }) {
   const { ref, focused, dwellProgress } = useInteractiveTarget<HTMLButtonElement>(id, onSelect)
+  const R = 56
+  const CIRC = 2 * Math.PI * R
   return (
     <button
       ref={ref}
@@ -86,22 +85,22 @@ function ConfirmTarget({
       className="relative flex flex-1 flex-col items-center justify-center gap-3 overflow-hidden"
       style={{ background: gradient }}
     >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0"
-        style={{
-          top: fillFrom === 'top' ? 0 : undefined,
-          bottom: fillFrom === 'bottom' ? 0 : undefined,
-          height: `${Math.round(dwellProgress * 100)}%`,
-          background: accent,
-          opacity: 0.16,
-        }}
-      />
-      <div
-        className="relative flex h-24 w-24 items-center justify-center rounded-full text-white"
-        style={{ background: accent, fontSize: 44, boxShadow: focused ? `0 0 0 10px ${accent}33` : 'none' }}
-      >
-        {icon}
+      {/* Dwell ring encircling the icon — mirrors YesNoScreen's binary targets. */}
+      <div className="relative flex h-[132px] w-[132px] items-center justify-center">
+        <svg viewBox="0 0 132 132" className="absolute inset-0" style={{ transform: 'rotate(-90deg)' }}>
+          <circle cx="66" cy="66" r={R} fill="none" stroke="rgba(255,255,255,.55)" strokeWidth="8" />
+          <circle
+            cx="66" cy="66" r={R} fill="none" stroke={accent} strokeWidth="8" strokeLinecap="round"
+            strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - dwellProgress)}
+            style={{ transition: 'stroke-dashoffset 90ms linear' }}
+          />
+        </svg>
+        <div
+          className="relative flex h-24 w-24 items-center justify-center rounded-full text-white"
+          style={{ background: accent, fontSize: 44, boxShadow: focused ? `0 0 0 8px ${accent}26` : 'none' }}
+        >
+          {icon}
+        </div>
       </div>
       <span className="relative" style={{ fontFamily: typography.fontFamily.serif, fontSize: 48, fontWeight: 600, color: ink }}>
         {label}

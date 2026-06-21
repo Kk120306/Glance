@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { colors, typography } from '@glance/shared/design/tokens'
 import { useInteractiveTarget } from '../hooks/useInteractiveTarget'
+import { DwellRing } from './DwellRing'
 
 /**
  * The fixed phrases a patient can say. This is a frozen, literal list — the
@@ -153,15 +154,7 @@ function PhraseTile({ phrase, onSelect }: { phrase: string; onSelect: () => void
         boxShadow: focused ? '0 12px 30px rgba(124,92,252,.16)' : '0 6px 18px rgba(36,30,43,.05)',
       }}
     >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0"
-        style={{
-          height: `${Math.round(dwellProgress * 100)}%`,
-          backgroundColor: colors.brand.soft,
-          opacity: 0.7,
-        }}
-      />
+      <DwellRing progress={dwellProgress} color={colors.brand.primary} />
       <span className="relative">{phrase}</span>
     </button>
   )
@@ -195,11 +188,7 @@ function ControlTile({
         boxShadow: focused ? '0 8px 20px rgba(124,92,252,.16)' : 'none',
       }}
     >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0"
-        style={{ height: `${Math.round(dwellProgress * 100)}%`, backgroundColor: accent, opacity: 0.18 }}
-      />
+      <DwellRing progress={dwellProgress} color={accent} size={34} inset={10} />
       <span className="relative">{label}</span>
     </button>
   )
@@ -226,15 +215,7 @@ function CloseTile({ onSelect }: { onSelect: () => void }) {
         boxShadow: focused ? '0 8px 20px rgba(245,158,11,.16)' : 'none',
       }}
     >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0"
-        style={{
-          height: `${Math.round(dwellProgress * 100)}%`,
-          backgroundColor: colors.patient.highlight,
-          opacity: 0.18,
-        }}
-      />
+      <DwellRing progress={dwellProgress} color={colors.patient.highlight} size={34} inset={10} />
       <span className="relative">✕ Close</span>
     </button>
   )

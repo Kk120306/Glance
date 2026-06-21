@@ -15,6 +15,7 @@ import { GazeTrackingPanel } from './GazeTrackingPanel'
 import { PhraseBoard, FIXED_PHRASES } from './PhraseBoard'
 import { PhraseConfirmScreen } from './PhraseConfirmScreen'
 import { BlobAgent, type BlobTone } from './BlobAgent'
+import { DwellRing } from './DwellRing'
 import { CalibrationScreen } from './CalibrationScreen'
 import { loadStoredEarThreshold, saveEarThreshold } from '../utils/calibration'
 import { meanAmplitude, stepSosSustain } from '../utils/sosAmplitude'
@@ -734,8 +735,7 @@ function HomeTile({
         border: `3px solid ${focused ? colors.brand.primary : 'transparent'}`,
       }}
     >
-      <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0"
-        style={{ height: `${Math.round(dwellProgress * 100)}%`, background: colors.brand.soft, opacity: 0.6 }} />
+      <DwellRing progress={dwellProgress} color={colors.brand.primary} />
       <span className="relative mb-5 flex h-16 w-16 items-center justify-center rounded-[20px]"
         style={{ background: iconBg, fontSize: 32 }}>{icon}</span>
       <span className="relative font-bold" style={{ fontSize: 26, color: colors.ink }}>{title}</span>
@@ -768,8 +768,7 @@ function ActionTile({
         outline: focused ? `4px solid ${colors.brand.soft}` : 'none',
       }}
     >
-      <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0"
-        style={{ height: `${Math.round(dwellProgress * 100)}%`, background: primary ? '#fff' : colors.brand.primary, opacity: 0.18 }} />
+      <DwellRing progress={dwellProgress} color={primary ? '#fff' : colors.brand.primary} size={38} inset={10} />
       <span className="relative" style={{ fontSize: 28 }}>{icon}</span>
       <span className="relative" style={{ fontSize: 24 }}>{label}</span>
     </button>
