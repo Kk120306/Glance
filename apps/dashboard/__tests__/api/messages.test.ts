@@ -4,6 +4,7 @@ import {
   fakeSession,
   fakeFamilyMember,
   UUID_A,
+  UUID_B,
 } from '../helpers'
 import * as mocks from '../mocks'
 
@@ -116,5 +117,29 @@ describe('POST /api/messages — caregiver compose scoping', () => {
     const res = await POST(makeRequest({ body: validBody }))
     expect(res.status).toBe(201)
     expect(mocks.dbCalls.insert).toBe(1)
+  })
+
+  it('201 and inserts when sending as a persona the caregiver owns', async () => {
+    mocks.getSession.mockResolvedValue(fakeSession)
+    mocks.getFamilyMemberFromSession.mockResolvedValue(fakeFamilyMember)
+    mocks.getCaregiverAccess.mockResolvedValue({ role: 'caregiver' })
+    mocks.queueResult([{ id: UUID_A, name: 'Grandpa' }]) // patient lookup
+    mocks.queueResult([{ id: UUID_B }]) // persona ownership lookup → owned
+    mocks.queueResult([{ id: 'm1', content: 'Hi from Mom', personaId: UUID_B }]) // insert returning
+    const res = await POST(makeRequest({ body: { content: 'Hi from Mom', recipientId: UUID_A, personaId: UUID_B } }))
+    expect(res.status).toBe(201)
+    expect(mocks.dbCalls.insert).toBe(1)
+  })
+
+  it('403 when sending as a persona the caregiver does not own', async () => {
+    mocks.getSession.mockResolvedValue(fakeSession)
+    mocks.getFamilyMemberFromSession.mockResolvedValue(fakeFamilyMember)
+    mocks.getCaregiverAccess.mockResolvedValue({ role: 'caregiver' })
+    mocks.queueResult([{ id: UUID_A, name: 'Grandpa' }]) // patient lookup
+    mocks.queueResult([]) // persona ownership lookup → not found
+    const res = await POST(makeRequest({ body: { content: 'hi', recipientId: UUID_A, personaId: UUID_B } }))
+    expect(res.status).toBe(403)
+    // The message must NOT be inserted when the persona is not owned.
+    expect(mocks.dbCalls.insert).toBe(0)
   })
 })

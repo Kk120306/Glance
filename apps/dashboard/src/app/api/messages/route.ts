@@ -1,19 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@glance/shared/db'
-import { messages, patients, familyMembers } from '@glance/shared/db/schema'
-import { desc, eq, or } from 'drizzle-orm'
+import { messages, patients, familyMembers, personas } from '@glance/shared/db/schema'
+import { and, desc, eq, or } from 'drizzle-orm'
 import type { EmitRequest } from '@glance/shared/ws'
 import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
 import { classifyTone } from '@/lib/tone-classifier'
 import { getFamilyMemberFromSession, getCaregiverAccess } from '@/lib/caregiver-auth'
 
-const sendMessageSchema = z.object({
-  content: z.string().min(1, 'Message cannot be empty').max(1000, 'Message too long'),
-  recipientId: z.string().uuid('Invalid recipient ID'),
-  isYesNo: z.boolean().optional().default(false),
-})
+const sendMessageSchema = z
+  .object({
+    content: z.string().min(1, 'Message cannot be empty').max(1000, 'Message too long'),
+    recipientId: z.string().uuid('Invalid recipient ID'),
+    // Optional persona to send AS — sets the display name + cloned voice. Must be
+    // owned by the sender; omitted means "send as my own account".
+    personaId: z.string().uuid('Invalid persona ID').optional(),
+    isYesNo: z.boolean().optional().default(false),
+    // Optional media attachment (externally hosted). Both fields travel together.
+    mediaUrl: z.string().url('Invalid media URL').max(2048).optional(),
+    mediaType: z.enum(['image', 'video']).optional(),
+  })
+  .refine((d) => (d.mediaUrl ? !!d.mediaType : true), {
+    message: 'mediaType is required when mediaUrl is set',
+    path: ['mediaType'],
+  })
 
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -43,16 +54,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
+  // If sending AS a persona, it must belong to the signed-in account (prevents
+  // borrowing another account's voice).
+  if (parsed.data.personaId) {
+    const [persona] = await db
+      .select({ id: personas.id })
+      .from(personas)
+      .where(and(eq(personas.id, parsed.data.personaId), eq(personas.familyMemberId, familyMember.id)))
+    if (!persona) {
+      return NextResponse.json({ error: 'Persona not found' }, { status: 403 })
+    }
+  }
+
   const toneClass = await classifyTone(parsed.data.content)
 
   const [message] = await db
     .insert(messages)
     .values({
       senderId: familyMember.id,
+      personaId: parsed.data.personaId ?? null,
       recipientId: patient.id,
       content: parsed.data.content,
       isYesNo: parsed.data.isYesNo,
       toneClass,
+      mediaUrl: parsed.data.mediaUrl ?? null,
+      mediaType: parsed.data.mediaType ?? null,
     })
     .returning()
 
@@ -109,9 +135,30 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 100)
   const offset = Number(url.searchParams.get('offset') ?? 0)
 
+  // Join the sender's display name so the thread can attribute each caregiver
+  // message to the actual person who sent it (mom vs. dad), not just "you".
   const rows = await db
-    .select()
+    .select({
+      id: messages.id,
+      senderId: messages.senderId,
+      senderPatientId: messages.senderPatientId,
+      recipientId: messages.recipientId,
+      content: messages.content,
+      isYesNo: messages.isYesNo,
+      isRead: messages.isRead,
+      toneClass: messages.toneClass,
+      reply: messages.reply,
+      repliedAt: messages.repliedAt,
+      createdAt: messages.createdAt,
+      senderName: familyMembers.name,
+      personaId: messages.personaId,
+      // When a persona was used, the thread attributes the message to it (its
+      // name + voice) rather than to the underlying account.
+      personaName: personas.name,
+    })
     .from(messages)
+    .leftJoin(familyMembers, eq(messages.senderId, familyMembers.id))
+    .leftJoin(personas, eq(messages.personaId, personas.id))
     .where(
       or(
         eq(messages.recipientId, patientId),

@@ -1,11 +1,14 @@
 import React from 'react'
 import Link from 'next/link'
+import { patientAppUrl } from '@/lib/patient-app'
 
 interface PatientCardProps {
   id: string
   name: string
   isOnline: boolean
   isSOS: boolean
+  // Device token for the linked patient screen; enables the "View screen" link.
+  deviceToken?: string
   // Per-patient telemetry (gaze accuracy, input mode, last-active). Not yet
   // instrumented end-to-end, so callers omit these and the card shows "—".
   gazeStatus?: string
@@ -20,6 +23,7 @@ export function PatientCard({
   name,
   isOnline,
   isSOS,
+  deviceToken,
   gazeStatus = '—',
   inputMode = '—',
   lastActive = '—',
@@ -69,8 +73,22 @@ export function PatientCard({
   }
 
   return (
-    <Link href={`/patients/${id}`}>
-      <div 
+    <div className="relative group">
+      {deviceToken && (
+        <a
+          href={patientAppUrl(deviceToken)}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open this patient's screen in a new tab"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute bottom-[14px] right-[14px] z-10 flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[12px] font-bold text-ink-muted opacity-0 shadow-lift transition-opacity group-hover:opacity-100 hover:text-brand-deep"
+        >
+          <span>↗</span>
+          <span>View screen</span>
+        </a>
+      )}
+      <Link href={`/patients/${id}`}>
+      <div
         className={`bg-white rounded-[20px] p-[22px] shadow-soft hover:shadow-lift transition-all duration-180 hover:-translate-y-1 cursor-pointer border ${cardBorder}`}
       >
         {/* Header row */}
@@ -124,6 +142,7 @@ export function PatientCard({
           )}
         </div>
       </div>
-    </Link>
+      </Link>
+    </div>
   )
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@glance/shared/db'
-import { messages, patients, familyMembers } from '@glance/shared/db/schema'
+import { messages, patients, familyMembers, personas } from '@glance/shared/db/schema'
 import { eq } from 'drizzle-orm'
 
 const TONE_STYLE: Record<string, { stability: number; similarity_boost: number; style: number }> = {
@@ -40,8 +40,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'No voice sender for this message' }, { status: 503 })
   }
 
-  const [sender] = await db.select().from(familyMembers).where(eq(familyMembers.id, message.senderId))
-  const voiceId = sender?.elevenlabsVoiceId
+  // Voice resolution: a message sent AS a persona speaks in that persona's cloned
+  // voice; otherwise it falls back to the sender account's own voice.
+  let voiceId: string | null | undefined
+  if (message.personaId) {
+    const [persona] = await db.select().from(personas).where(eq(personas.id, message.personaId))
+    voiceId = persona?.elevenlabsVoiceId
+  }
+  if (!voiceId) {
+    const [sender] = await db.select().from(familyMembers).where(eq(familyMembers.id, message.senderId))
+    voiceId = sender?.elevenlabsVoiceId
+  }
   const apiKey = process.env.ELEVENLABS_API_KEY
 
   if (!voiceId || !apiKey) {

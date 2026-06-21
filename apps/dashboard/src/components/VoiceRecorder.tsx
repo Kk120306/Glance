@@ -11,6 +11,9 @@ const MAX_RECORD_MS = 60_000
 interface VoiceRecorderProps {
   /** Called with the new ElevenLabs voice id once cloning succeeds. */
   onCloned?: (voiceId: string) => void
+  /** Endpoint the recording is POSTed to. Defaults to the signed-in caregiver's
+   *  own voice; pass a persona clone URL to attach the voice to a persona. */
+  uploadUrl?: string
 }
 
 /**
@@ -19,7 +22,7 @@ interface VoiceRecorderProps {
  * endpoint, and reports the resulting voice id. The microphone tracks are always
  * stopped once recording ends.
  */
-export function VoiceRecorder({ onCloned }: VoiceRecorderProps) {
+export function VoiceRecorder({ onCloned, uploadUrl = '/api/family-member/me/voice-clone' }: VoiceRecorderProps) {
   const [status, setStatus] = useState<RecorderStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [seconds, setSeconds] = useState(0)
@@ -82,7 +85,7 @@ export function VoiceRecorder({ onCloned }: VoiceRecorderProps) {
     try {
       const formData = new FormData()
       formData.append('audio', blob, 'voice.webm')
-      const res = await fetch('/api/family-member/me/voice-clone', {
+      const res = await fetch(uploadUrl, {
         method: 'POST',
         body: formData,
       })

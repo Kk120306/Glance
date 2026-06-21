@@ -14,14 +14,15 @@ export function Sidebar() {
 
   // Determine active states
   const isPatientsActive = pathname === '/dashboard' || pathname.startsWith('/patients')
+  const isMessagesActive = pathname === '/dashboard/messages'
   const isVoiceLibraryActive = pathname === '/dashboard/voice-library'
+  const isCalibrationActive = pathname === '/dashboard/calibration'
   const isSettingsActive = pathname === '/dashboard/settings'
 
-  // Check if any patient has active SOS to show alerts dot
-  // Note: we can also detect if there is any active alarm/SOS in DashboardProvider
-  // For the sake of the design, we can show the dot if onlineStatus has an alert or similar,
-  // or simply check if any patient is in an SOS state. (We'll wire it up dynamically)
-  const hasActiveSOS = false // will check if DashboardProvider surfaces active SOS IDs
+  const navItemClass = (active: boolean) =>
+    `flex items-center gap-3 rounded-[14px] px-3.5 py-3 text-[16px] font-bold transition-colors ${
+      active ? 'bg-brand-soft text-brand-deep' : 'text-ink-muted hover:bg-surface-warm'
+    }`
 
   async function handleSignOut() {
     await signOut()
@@ -68,38 +69,17 @@ export function Sidebar() {
           )}
         </Link>
 
-        {/* Alerts Nav Item (Non-functional, coming soon, but dynamically shows SOS dot) */}
-        <button
-          type="button"
-          onClick={() => alert('Alerts history coming soon.')}
-          className="flex w-full items-center gap-3 rounded-[14px] px-3.5 py-3 text-left text-[16px] font-bold text-ink-muted transition-colors hover:bg-surface-warm"
-        >
-          <span className="text-xl">🔔</span>
-          <span>Alerts</span>
-          {hasActiveSOS && (
-            <span className="ml-auto h-2.5 w-2.5 animate-[pulseDot_1.2s_ease-in-out_infinite] rounded-full bg-error" />
-          )}
-        </button>
-
         {/* Messages Nav Item */}
-        <button
-          type="button"
-          onClick={() => alert('Message center coming soon.')}
-          className="flex w-full items-center gap-3 rounded-[14px] px-3.5 py-3 text-left text-[16px] font-bold text-ink-muted transition-colors hover:bg-surface-warm"
-        >
+        <Link href="/dashboard/messages" className={navItemClass(isMessagesActive)}>
           <span className="text-xl">💬</span>
           <span>Messages</span>
-        </button>
+        </Link>
 
         {/* Voice Library Nav Item */}
-        <button
-          type="button"
-          onClick={() => alert('Voice library dashboard coming soon. Edit patient voice inside Patient Settings.')}
-          className="flex w-full items-center gap-3 rounded-[14px] px-3.5 py-3 text-left text-[16px] font-bold text-ink-muted transition-colors hover:bg-surface-warm"
-        >
+        <Link href="/dashboard/voice-library" className={navItemClass(isVoiceLibraryActive)}>
           <span className="text-xl">🎙️</span>
           <span>Voice library</span>
-        </button>
+        </Link>
 
         {/* Navigation Group: System */}
         <div className="px-3 pt-6 pb-2.5">
@@ -107,24 +87,16 @@ export function Sidebar() {
         </div>
 
         {/* Calibration Nav Item */}
-        <button
-          type="button"
-          onClick={() => alert('Calibration tools coming soon.')}
-          className="flex w-full items-center gap-3 rounded-[14px] px-3.5 py-3 text-left text-[16px] font-bold text-ink-muted transition-colors hover:bg-surface-warm"
-        >
+        <Link href="/dashboard/calibration" className={navItemClass(isCalibrationActive)}>
           <span className="text-xl">🎯</span>
           <span>Calibration</span>
-        </button>
+        </Link>
 
         {/* Settings Nav Item */}
-        <button
-          type="button"
-          onClick={() => alert('Global settings coming soon.')}
-          className="flex w-full items-center gap-3 rounded-[14px] px-3.5 py-3 text-left text-[16px] font-bold text-ink-muted transition-colors hover:bg-surface-warm"
-        >
+        <Link href="/dashboard/settings" className={navItemClass(isSettingsActive)}>
           <span className="text-xl">⚙️</span>
           <span>Settings</span>
-        </button>
+        </Link>
       </nav>
 
       {/* User profile card at bottom */}

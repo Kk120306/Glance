@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useSession } from '@/lib/auth-client'
@@ -9,7 +9,7 @@ import { MessageBubble } from '@glance/shared/design/components'
 import type { Message } from '@glance/shared/types'
 import type { ServerToClientMessage } from '@glance/shared/ws'
 import { useDashboard } from '@/components/DashboardProvider'
-import { VoiceRecorder } from '@/components/VoiceRecorder'
+import { patientAppUrl } from '@/lib/patient-app'
 
 interface CameraScheduleItem {
   id?: string
@@ -20,6 +20,19 @@ interface CameraScheduleItem {
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/** A thread message with the joined sender + persona display names from GET /api/messages. */
+type ThreadMessage = Message & { senderName?: string | null; personaName?: string | null }
+
+interface Persona {
+  id: string
+  name: string
+  elevenlabsVoiceId: string | null
+  hasVoice: boolean
+}
+
+/** Rail selection: everyone, the account ("you"), or a specific persona id. */
+type Selection = 'all' | 'you' | string
 
 export default function PatientDashboardPage() {
   const params = useParams<{ id: string }>()
@@ -34,18 +47,20 @@ export default function PatientDashboardPage() {
   const [isYesNo, setIsYesNo] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  // Optional media attachment (URL to an externally hosted photo or clip).
+  const [mediaUrl, setMediaUrl] = useState('')
+  const [mediaType, setMediaType] = useState<'image' | 'video'>('image')
 
   // Messages
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<ThreadMessage[]>([])
   const [loadingMessages, setLoadingMessages] = useState(true)
 
-  // Profile settings
-  const [voiceId, setVoiceId] = useState('')
-  const [voiceSaving, setVoiceSaving] = useState(false)
-  const [voiceSaved, setVoiceSaved] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
+  // Personas + which identity the rail has selected (drives thread filter + send-as).
+  const [personas, setPersonas] = useState<Persona[]>([])
+  const [selected, setSelected] = useState<Selection>('all')
 
-  // Camera config
+  // Settings drawer (camera config)
+  const [showSettings, setShowSettings] = useState(false)
   const [schedules, setSchedules] = useState<CameraScheduleItem[]>([])
   const [cameraOverride, setCameraOverride] = useState(false)
   const [savingCamera, setSavingCamera] = useState(false)
@@ -55,12 +70,14 @@ export default function PatientDashboardPage() {
   const [nameDraft, setNameDraft] = useState('')
   const [savingName, setSavingName] = useState(false)
 
+  const threadEndRef = useRef<HTMLDivElement | null>(null)
+
   // ── Fetch messages for this patient
   const fetchMessages = useCallback(async () => {
     try {
       const res = await fetch(`/api/messages?patientId=${patientId}`)
       if (res.ok) {
-        const data = (await res.json()) as Message[]
+        const data = (await res.json()) as ThreadMessage[]
         setMessages(data)
       }
     } catch {
@@ -70,14 +87,11 @@ export default function PatientDashboardPage() {
     }
   }, [patientId])
 
-  // ── Fetch family member profile (voice settings)
-  const fetchProfile = useCallback(async () => {
+  // ── Fetch this account's personas (the people you can message as)
+  const fetchPersonas = useCallback(async () => {
     try {
-      const res = await fetch('/api/family-member/me')
-      if (res.ok) {
-        const data = (await res.json()) as { elevenlabsVoiceId: string | null }
-        setVoiceId(data.elevenlabsVoiceId ?? '')
-      }
+      const res = await fetch('/api/personas')
+      if (res.ok) setPersonas((await res.json()) as Persona[])
     } catch {
       // ignore
     }
@@ -101,9 +115,9 @@ export default function PatientDashboardPage() {
   useEffect(() => {
     setLoadingMessages(true)
     void fetchMessages()
-    void fetchProfile()
+    void fetchPersonas()
     void fetchCameraConfig()
-  }, [fetchMessages, fetchProfile, fetchCameraConfig])
+  }, [fetchMessages, fetchPersonas, fetchCameraConfig])
 
   // ── Subscribe to the shared socket for THIS patient's live updates.
   useEffect(() => {
@@ -133,7 +147,17 @@ export default function PatientDashboardPage() {
     }
   }, [socket, patientId])
 
-  // ── Send message
+  // The persona currently selected (null for Everyone/You), and the id we send as.
+  const selectedPersona = personas.find((p) => p.id === selected) ?? null
+  const sendAsPersonaId = selectedPersona?.id
+
+  // Resolve a persona name for socket-delivered messages that lack the join.
+  const personaNameById = useCallback(
+    (id: string | null | undefined) => (id ? personas.find((p) => p.id === id)?.name : undefined),
+    [personas],
+  )
+
+  // ── Send message (as the selected persona, or as the account)
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
     if (!content.trim()) return
@@ -143,7 +167,13 @@ export default function PatientDashboardPage() {
       const res = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: content.trim(), recipientId: patientId, isYesNo }),
+        body: JSON.stringify({
+          content: content.trim(),
+          recipientId: patientId,
+          isYesNo,
+          ...(sendAsPersonaId ? { personaId: sendAsPersonaId } : {}),
+          ...(mediaUrl.trim() ? { mediaUrl: mediaUrl.trim(), mediaType } : {}),
+        }),
       })
       if (!res.ok) {
         const data = (await res.json()) as { error: unknown }
@@ -151,30 +181,14 @@ export default function PatientDashboardPage() {
       } else {
         setContent('')
         setIsYesNo(false)
+        setMediaUrl('')
+        setMediaType('image')
         await fetchMessages()
       }
     } catch {
       setSendError('Network error — please try again')
     } finally {
       setSending(false)
-    }
-  }
-
-  // ── Save voice ID
-  async function handleSaveVoice() {
-    setVoiceSaving(true)
-    try {
-      await fetch('/api/family-member/me/voice', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ elevenlabsVoiceId: voiceId || null }),
-      })
-      setVoiceSaved(true)
-      setTimeout(() => setVoiceSaved(false), 2000)
-    } catch {
-      // ignore
-    } finally {
-      setVoiceSaving(false)
     }
   }
 
@@ -226,31 +240,52 @@ export default function PatientDashboardPage() {
   }
 
   function addSchedule() {
-    setSchedules(prev => [
+    setSchedules((prev) => [
       ...prev,
       { dayOfWeek: 1, startTime: '09:00', endTime: '17:00', timezone: 'America/New_York' },
     ])
   }
 
   function removeSchedule(idx: number) {
-    setSchedules(prev => prev.filter((_, i) => i !== idx))
+    setSchedules((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  return (
-    <main className="flex-1 bg-[#F4EEE6] p-[30px] px-[34px] min-h-screen overflow-y-auto">
-      {/* Back Link Breadcrumb */}
-      <div className="flex items-center gap-2 text-[15px] font-bold text-ink-faint mb-3">
-        <Link href="/dashboard" className="hover:text-ink-muted transition-colors">
-          Patients
-        </Link>
-        <span>·</span>
-        <span className="text-ink-muted">{patient?.name ?? 'Detail'}</span>
-      </div>
+  // Messages visible for the current selection. The patient's own messages appear
+  // in every thread (their side of every conversation); a persona thread adds that
+  // persona's messages, the "You" thread adds the account's own direct messages.
+  const visibleMessages = useMemo(() => {
+    const filtered = messages.filter((m) => {
+      if (selected === 'all') return true
+      if (m.senderPatientId) return true
+      if (selected === 'you') return !m.personaId
+      return m.personaId === selected
+    })
+    // Fetched newest-first; render oldest→newest for a chat feel.
+    return [...filtered].reverse()
+  }, [messages, selected])
 
-      <header className="flex items-center justify-between mb-6">
-        <div className="min-w-0">
-          {editingName ? (
-            <div className="flex items-center gap-2">
+  // Auto-scroll to the newest message when the thread changes.
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [visibleMessages])
+
+  // Label for the "Sending as" chip + thread header.
+  const sendingAsLabel = selectedPersona
+    ? selectedPersona.name
+    : session?.user?.name ?? session?.user?.email?.split('@')[0] ?? 'You'
+
+  const accountInitials = (session?.user?.name ?? session?.user?.email ?? 'You').slice(0, 2).toUpperCase()
+
+  return (
+    <main className="flex h-screen overflow-hidden bg-[#F4EEE6]">
+      {/* ── Persona rail (who you're messaging as) ── */}
+      <aside className="flex w-[270px] shrink-0 flex-col border-r border-line bg-white">
+        <div className="border-b border-line px-5 py-4">
+          <Link href="/dashboard" className="text-[13px] font-bold text-ink-faint hover:text-ink-muted">
+            ‹ All patients
+          </Link>
+          <div className="mt-2 flex items-center gap-2">
+            {editingName ? (
               <input
                 type="text"
                 value={nameDraft}
@@ -261,75 +296,274 @@ export default function PatientDashboardPage() {
                   if (e.key === 'Enter') void handleSaveName()
                   if (e.key === 'Escape') setEditingName(false)
                 }}
-                className="rounded-[14px] border border-line-warm px-3 py-2 text-xl font-bold transition-all focus:bg-surface-warm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                onBlur={() => void handleSaveName()}
+                className="w-full rounded-[12px] border border-line-warm px-3 py-1.5 text-lg font-bold focus:bg-surface-warm focus:outline-none focus:ring-2 focus:ring-brand-primary"
               />
-              <Button onClick={handleSaveName} disabled={savingName}>
-                {savingName ? 'Saving…' : 'Save'}
-              </Button>
-              <button
-                type="button"
-                onClick={() => setEditingName(false)}
-                className="text-sm text-ink-faint hover:text-ink-muted"
+            ) : (
+              <>
+                <h1 className="truncate font-serif text-[24px] font-semibold tracking-tight text-ink">
+                  {patient?.name ?? 'Patient'}
+                </h1>
+                <button
+                  type="button"
+                  onClick={startEditName}
+                  aria-label="Edit patient name"
+                  className="text-ink-faint transition-transform hover:scale-110 hover:text-ink-muted"
+                >
+                  ✎
+                </button>
+              </>
+            )}
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            {patient?.deviceToken && (
+              <a
+                href={patientAppUrl(patient.deviceToken)}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open this patient's screen in a new tab"
+                className="inline-flex items-center gap-1 rounded-[10px] border border-line px-2.5 py-1 text-[12px] font-bold text-ink-muted transition-colors hover:bg-surface-warm hover:text-brand-deep"
               >
-                Cancel
-              </button>
-            </div>
+                ↗ View screen
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              className="rounded-[10px] border border-line px-2.5 py-1 text-[12px] font-bold text-ink-muted transition-colors hover:bg-surface-warm"
+            >
+              ⚙ Settings
+            </button>
+          </div>
+        </div>
+
+        <div className="px-4 pt-3 pb-1">
+          <span className="section-label">Messaging as</span>
+        </div>
+        <nav className="flex-1 overflow-y-auto px-3 pb-4">
+          <RailItem
+            active={selected === 'all'}
+            onClick={() => setSelected('all')}
+            avatar="∗"
+            avatarBg="linear-gradient(135deg,#C9B6FF,#A98CF7)"
+            title="Everyone"
+            subtitle="All messages"
+          />
+          <RailItem
+            active={selected === 'you'}
+            onClick={() => setSelected('you')}
+            avatar={accountInitials}
+            avatarBg="linear-gradient(135deg,#5FC9BD,#0E9384)"
+            title={session?.user?.name ?? 'You'}
+            subtitle="Your account"
+          />
+
+          <div className="px-2 pt-4 pb-1.5">
+            <span className="section-label">People</span>
+          </div>
+          {personas.length === 0 ? (
+            <p className="px-2 text-[13px] text-ink-faint">
+              No people yet.{' '}
+              <Link href="/dashboard/voice-library" className="font-bold text-brand-deep hover:underline">
+                Add Mom, Dad…
+              </Link>
+            </p>
           ) : (
-            <div className="flex items-center gap-2">
-              <h1 className="truncate font-serif text-[34px] font-semibold tracking-tight text-ink">
-                {patient?.name ?? 'Patient'}
-              </h1>
-              <button
-                type="button"
-                onClick={startEditName}
-                aria-label="Edit patient name"
-                className="text-ink-faint hover:text-ink-muted text-lg transition-transform hover:scale-110"
-              >
-                ✎
-              </button>
-            </div>
+            personas.map((p) => (
+              <RailItem
+                key={p.id}
+                active={selected === p.id}
+                onClick={() => setSelected(p.id)}
+                avatar={p.name.slice(0, 2).toUpperCase()}
+                avatarBg="linear-gradient(135deg,#A98CF7,#7C5CFC)"
+                title={p.name}
+                subtitle={p.hasVoice ? '🎙 Voice on file' : 'No voice yet'}
+              />
+            ))
+          )}
+          <Link
+            href="/dashboard/voice-library"
+            className="mt-2 block px-2 text-[13px] font-bold text-brand-deep hover:underline"
+          >
+            + Manage people & voices
+          </Link>
+        </nav>
+      </aside>
+
+      {/* ── Chat area ── */}
+      <section className="flex min-w-0 flex-1 flex-col">
+        {/* Thread header */}
+        <header className="flex items-center gap-3 border-b border-line bg-white px-6 py-3.5">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+            style={{ background: selectedPersona ? 'linear-gradient(135deg,#A98CF7,#7C5CFC)' : 'linear-gradient(135deg,#5FC9BD,#0E9384)' }}
+          >
+            {selected === 'all' ? '∗' : selectedPersona ? selectedPersona.name.slice(0, 2).toUpperCase() : accountInitials}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate font-serif text-[19px] font-semibold text-ink">
+              {selected === 'all' ? 'Everyone' : sendingAsLabel}
+              <span className="text-ink-faint"> · {patient?.name ?? 'Patient'}</span>
+            </p>
+            {selectedPersona && !selectedPersona.hasVoice && (
+              <p className="text-[12px] text-ink-faint">
+                No voice yet —{' '}
+                <Link href="/dashboard/voice-library" className="font-bold text-brand-deep hover:underline">
+                  record one
+                </Link>{' '}
+                so messages play in {selectedPersona.name}’s voice.
+              </p>
+            )}
+          </div>
+        </header>
+
+        {/* Thread */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {loadingMessages ? (
+            <p className="text-sm text-ink-faint">Loading…</p>
+          ) : visibleMessages.length === 0 ? (
+            <p className="text-sm text-ink-faint">
+              {messages.length === 0
+                ? 'No messages yet. Send the first one below.'
+                : 'No messages in this thread yet.'}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {visibleMessages.map((msg) => {
+                const fromPatient = !!msg.senderPatientId
+                const senderName = fromPatient
+                  ? patient?.name ?? 'Patient'
+                  : msg.personaName ??
+                    personaNameById(msg.personaId) ??
+                    msg.senderName ??
+                    session?.user?.name ??
+                    'You'
+                return (
+                  <li key={msg.id} className={`flex ${fromPatient ? 'justify-start' : 'justify-end'}`}>
+                    <div className="max-w-[80%]">
+                      <MessageBubble
+                        senderName={senderName}
+                        content={msg.content}
+                        timestamp={msg.createdAt}
+                        isYesNo={msg.isYesNo}
+                        reply={msg.reply}
+                        repliedAt={msg.repliedAt}
+                        fromPatient={fromPatient}
+                      />
+                    </div>
+                  </li>
+                )
+              })}
+              <div ref={threadEndRef} />
+            </ul>
           )}
         </div>
-        <Button variant="ghost" onClick={() => setShowSettings(s => !s)}>
-          Settings
-        </Button>
-      </header>
 
-      {/* Two Column Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* Left Column: Compose & Settings */}
-        <div className="flex flex-col gap-6">
-          {/* Settings Panel */}
-          {showSettings && (
-            <section className="flex flex-col gap-5 rounded-[22px] border border-line bg-white p-6 shadow-soft">
-              <h2 className="font-serif text-xl font-semibold text-ink">Profile & Settings</h2>
+        {/* Compose — pinned to the bottom */}
+        <form onSubmit={handleSend} className="border-t border-line bg-white px-6 py-4">
+          <div className="mb-2 flex items-center gap-2 text-[13px]">
+            <span className="text-ink-faint">Sending as</span>
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-bold"
+              style={{
+                background: selectedPersona ? 'rgba(124,92,252,.12)' : 'rgba(14,147,132,.12)',
+                color: selectedPersona ? '#5B3FD6' : '#0B6F63',
+              }}
+            >
+              {selectedPersona ? `🎙 ${sendingAsLabel}` : sendingAsLabel}
+            </span>
+            {selectedPersona && !selectedPersona.hasVoice && (
+              <span className="text-[12px] text-ink-faint">(plays in the device voice until you record one)</span>
+            )}
+          </div>
+          <div className="flex items-end gap-3">
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              maxLength={1000}
+              rows={2}
+              placeholder={`Message ${patient?.name ?? 'your loved one'}…`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  void handleSend(e as unknown as React.FormEvent)
+                }
+              }}
+              className="flex-1 resize-none rounded-[16px] border border-line-warm px-4 py-3 text-base transition-all focus:border-transparent focus:bg-surface-warm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+            />
+            <Button type="submit" disabled={sending || !content.trim()}>
+              {sending ? 'Sending…' : 'Send'}
+            </Button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-ink-muted select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isYesNo}
+                onChange={(e) => setIsYesNo(e.target.checked)}
+                className="rounded text-brand-primary focus:ring-brand-primary"
+              />
+              Ask as a Yes/No question
+            </label>
+            <details className="text-sm">
+              <summary className="cursor-pointer text-ink-muted hover:text-ink">
+                Attach photo/video {mediaUrl.trim() && <span className="font-bold text-brand-deep">· 1 attached</span>}
+              </summary>
+              <div className="mt-2 flex gap-2">
+                <input
+                  type="url"
+                  value={mediaUrl}
+                  onChange={(e) => setMediaUrl(e.target.value)}
+                  placeholder="https://… image or video URL"
+                  className="w-72 rounded-[12px] border border-line-warm px-3 py-2 text-sm transition-all focus:bg-surface-warm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                />
+                <select
+                  value={mediaType}
+                  onChange={(e) => setMediaType(e.target.value as 'image' | 'video')}
+                  className="rounded-[12px] border border-line-warm px-3 py-2 text-sm transition-all focus:ring-2 focus:ring-brand-primary"
+                >
+                  <option value="image">Photo</option>
+                  <option value="video">Video</option>
+                </select>
+              </div>
+            </details>
+            <span className="ml-auto text-xs text-ink-faint">{content.length}/1000</span>
+          </div>
+          {sendError && (
+            <p role="alert" className="mt-2 text-sm text-error">
+              {sendError}
+            </p>
+          )}
+        </form>
+      </section>
 
-              {/* Your voice — in-app cloning */}
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-ink-muted">Your voice</label>
-                <VoiceRecorder onCloned={(id) => setVoiceId(id)} />
-
-                {/* Advanced: paste an existing ElevenLabs voice ID directly. */}
-                <details className="mt-1">
-                  <summary className="cursor-pointer text-xs text-ink-muted hover:text-ink-muted">
-                    Advanced: use an existing ElevenLabs voice ID
-                  </summary>
-                  <div className="mt-2 flex gap-2">
-                    <input
-                      type="text"
-                      value={voiceId}
-                      onChange={e => setVoiceId(e.target.value)}
-                      placeholder="e.g. 21m00Tcm4TlvDq8ikWAM"
-                      className="flex-1 rounded-[14px] border border-line-warm px-4 py-3 text-sm transition-all focus:bg-surface-warm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                    />
-                    <Button onClick={handleSaveVoice} disabled={voiceSaving}>
-                      {voiceSaved ? 'Saved!' : voiceSaving ? 'Saving…' : 'Save'}
-                    </Button>
-                  </div>
-                </details>
+      {/* ── Settings drawer (camera schedule) ── */}
+      {showSettings && (
+        <>
+          <button
+            type="button"
+            aria-label="Close settings"
+            onClick={() => setShowSettings(false)}
+            className="fixed inset-0 z-40 bg-black/20"
+          />
+          <div className="fixed right-0 top-0 z-50 flex h-screen w-[440px] flex-col overflow-y-auto bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-6 py-4">
+              <h2 className="font-serif text-xl font-semibold text-ink">Settings</h2>
+              <button type="button" onClick={() => setShowSettings(false)} className="text-ink-faint hover:text-ink">
+                ✕
+              </button>
+            </div>
+            <div className="flex flex-col gap-5 p-6">
+              <div className="rounded-[16px] border border-line bg-surface-warm p-4">
+                <p className="text-sm text-ink-muted">
+                  Manage each person’s cloned voice in the{' '}
+                  <Link href="/dashboard/voice-library" className="font-bold text-brand-deep hover:underline">
+                    Voice library
+                  </Link>
+                  .
+                </p>
               </div>
 
-              {/* Camera Config */}
               {patient && (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
@@ -338,40 +572,44 @@ export default function PatientDashboardPage() {
                       <input
                         type="checkbox"
                         checked={cameraOverride}
-                        onChange={e => setCameraOverride(e.target.checked)}
+                        onChange={(e) => setCameraOverride(e.target.checked)}
                         className="rounded text-brand-primary focus:ring-brand-primary"
                       />
-                      Manual override (always on)
+                      Always on
                     </label>
                   </div>
                   {schedules.map((s, i) => (
                     <div key={i} className="flex flex-wrap items-center gap-2 rounded-[12px] bg-surface-warm p-3">
                       <select
                         value={s.dayOfWeek}
-                        onChange={e => setSchedules(prev => prev.map((sc, idx) => idx === i ? { ...sc, dayOfWeek: Number(e.target.value) } : sc))}
+                        onChange={(e) => setSchedules((prev) => prev.map((sc, idx) => (idx === i ? { ...sc, dayOfWeek: Number(e.target.value) } : sc)))}
                         className="rounded-[10px] border border-line-warm px-3 py-1.5 text-sm transition-all focus:ring-2 focus:ring-brand-primary"
                       >
-                        {DAY_NAMES.map((d, di) => <option key={d} value={di}>{d}</option>)}
+                        {DAY_NAMES.map((d, di) => (
+                          <option key={d} value={di}>
+                            {d}
+                          </option>
+                        ))}
                       </select>
                       <input
                         type="time"
                         value={s.startTime}
-                        onChange={e => setSchedules(prev => prev.map((sc, idx) => idx === i ? { ...sc, startTime: e.target.value } : sc))}
+                        onChange={(e) => setSchedules((prev) => prev.map((sc, idx) => (idx === i ? { ...sc, startTime: e.target.value } : sc)))}
                         className="rounded-[10px] border border-line-warm px-3 py-1.5 text-sm transition-all focus:ring-2 focus:ring-brand-primary"
                       />
                       <span className="text-sm text-ink-muted">–</span>
                       <input
                         type="time"
                         value={s.endTime}
-                        onChange={e => setSchedules(prev => prev.map((sc, idx) => idx === i ? { ...sc, endTime: e.target.value } : sc))}
+                        onChange={(e) => setSchedules((prev) => prev.map((sc, idx) => (idx === i ? { ...sc, endTime: e.target.value } : sc)))}
                         className="rounded-[10px] border border-line-warm px-3 py-1.5 text-sm transition-all focus:ring-2 focus:ring-brand-primary"
                       />
                       <input
                         type="text"
                         value={s.timezone}
                         placeholder="Timezone (IANA)"
-                        onChange={e => setSchedules(prev => prev.map((sc, idx) => idx === i ? { ...sc, timezone: e.target.value } : sc))}
-                        className="w-44 rounded-[10px] border border-line-warm px-3 py-1.5 text-sm transition-all focus:ring-2 focus:ring-brand-primary"
+                        onChange={(e) => setSchedules((prev) => prev.map((sc, idx) => (idx === i ? { ...sc, timezone: e.target.value } : sc)))}
+                        className="w-40 rounded-[10px] border border-line-warm px-3 py-1.5 text-sm transition-all focus:ring-2 focus:ring-brand-primary"
                       />
                       <button type="button" onClick={() => removeSchedule(i)} className="text-sm text-error hover:underline">
                         Remove
@@ -388,78 +626,49 @@ export default function PatientDashboardPage() {
                   </div>
                 </div>
               )}
-            </section>
-          )}
-
-          {/* Compose Form */}
-          <section aria-label="Compose message">
-            <form onSubmit={handleSend} className="flex flex-col gap-4 rounded-[22px] border border-line bg-white p-6 shadow-soft">
-              <label htmlFor="message-content" className="section-label">
-                Send a message
-              </label>
-              <textarea
-                id="message-content"
-                value={content}
-                onChange={e => setContent(e.target.value)}
-                maxLength={1000}
-                rows={4}
-                placeholder="Type your message…"
-                className="w-full resize-none rounded-[14px] border border-line-warm px-4 py-3 text-base transition-all focus:border-transparent focus:bg-surface-warm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-              />
-              <label className="flex items-center gap-2 text-sm text-ink-muted select-none cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isYesNo}
-                  onChange={e => setIsYesNo(e.target.checked)}
-                  className="rounded text-brand-primary focus:ring-brand-primary"
-                />
-                Ask as a Yes/No question
-              </label>
-              {sendError && (
-                <p role="alert" className="text-sm text-error">
-                  {sendError}
-                </p>
-              )}
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-ink-faint">{content.length}/1000</span>
-                <Button type="submit" disabled={sending || !content.trim()}>
-                  {sending ? 'Sending…' : 'Send'}
-                </Button>
-              </div>
-            </form>
-          </section>
-        </div>
-
-        {/* Right Column: Message History */}
-        <section aria-label="Message history" className="max-h-[calc(100vh-180px)] overflow-y-auto bg-white rounded-[22px] border border-line p-6 shadow-soft flex flex-col">
-          <h2 className="mb-4 font-serif text-2xl font-semibold text-ink">Message history</h2>
-          {loadingMessages ? (
-            <p className="text-sm text-ink-faint">Loading…</p>
-          ) : messages.length === 0 ? (
-            <p className="text-sm text-ink-faint">No messages yet. Send one on the left.</p>
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {messages.map(msg => (
-                <li key={msg.id}>
-                  <MessageBubble
-                    senderName={
-                      msg.senderPatientId
-                        ? 'Patient'
-                        : (session?.user?.name ?? session?.user?.email ?? 'You')
-                    }
-                    content={msg.content}
-                    timestamp={msg.createdAt}
-                    isYesNo={msg.isYesNo}
-                    reply={msg.reply}
-                    repliedAt={msg.repliedAt}
-                    fromPatient={!!msg.senderPatientId}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+            </div>
+          </div>
+        </>
+      )}
     </main>
+  )
+}
+
+/** A selectable person/identity row in the messenger rail. */
+function RailItem({
+  active,
+  onClick,
+  avatar,
+  avatarBg,
+  title,
+  subtitle,
+}: {
+  active: boolean
+  onClick: () => void
+  avatar: string
+  avatarBg: string
+  title: string
+  subtitle: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition-colors ${
+        active ? 'bg-brand-soft' : 'hover:bg-surface-warm'
+      }`}
+      style={active ? { boxShadow: 'inset 3px 0 0 0 #7C5CFC' } : undefined}
+    >
+      <div
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+        style={{ background: avatarBg }}
+      >
+        {avatar}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-[15px] font-bold ${active ? 'text-brand-deep' : 'text-ink'}`}>{title}</p>
+        <p className="truncate text-[12px] text-ink-faint">{subtitle}</p>
+      </div>
+    </button>
   )
 }

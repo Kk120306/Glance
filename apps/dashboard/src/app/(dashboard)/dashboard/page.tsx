@@ -196,6 +196,7 @@ export default function DashboardOverviewPage() {
               key={patient.id}
               id={patient.id}
               name={patient.name}
+              deviceToken={patient.deviceToken}
               isOnline={onlineStatus[patient.id] === 'online'}
               isSOS={sosAlert?.patientId === patient.id}
             />
