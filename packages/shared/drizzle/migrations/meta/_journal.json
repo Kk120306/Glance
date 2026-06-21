@@ -36,6 +36,20 @@
       "when": 1781919963239,
       "tag": "0004_furry_warstar",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782044443684,
+      "tag": "0005_fuzzy_black_tom",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782046805277,
+      "tag": "0006_damp_chamber",
+      "breakpoints": true
     }
   ]
 }
