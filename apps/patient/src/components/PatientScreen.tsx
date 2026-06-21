@@ -1,9 +1,14 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
+import { useState, useEffect, useRef, useCallback, Fragment, type ReactNode } from 'react'
 import { io, type Socket } from 'socket.io-client'
 import { SOSButton } from '@glance/shared/design/components'
-import { InteractionProvider } from '@glance/shared/design/components'
+import {
+  InteractionProvider,
+  useInteraction,
+  gazeStepDirection,
+  STEP_SUSTAIN_MS,
+} from '@glance/shared/design/components'
 import { colors, typography } from '@glance/shared/design/tokens'
 import type { ServerToClientMessage, CameraSchedule } from '@glance/shared/ws'
 import { isCameraWindowActive } from '@glance/shared/utils/camera-schedule'
@@ -37,6 +42,8 @@ interface CurrentMessage {
   content: string
   isYesNo: boolean
   toneClass: string
+  mediaUrl?: string | null
+  mediaType?: string | null
 }
 
 /** Map a message's stored tone class to a Blob expression (defaults to neutral). */
@@ -47,17 +54,21 @@ function toBlobTone(toneClass: string | undefined): BlobTone {
 interface PatientScreenProps {
   wsServerUrl: string
   dashboardUrl: string
-  displaySeconds: number
   deviceToken: string
 }
 
-export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, deviceToken }: PatientScreenProps) {
+export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: PatientScreenProps) {
   const [activated, setActivated] = useState(false)
   const [patientConfig, setPatientConfig] = useState<PatientConfig | null>(null)
   const [schedules, setSchedules] = useState<CameraSchedule[]>([])
   const [cameraOverride, setCameraOverride] = useState(false)
   const [cameraActive, setCameraActive] = useState(false)
-  const [currentMessage, setCurrentMessage] = useState<CurrentMessage | null>(null)
+  // Incoming caregiver messages queue up here. The patient advances through them
+  // explicitly (gaze/blink) — nothing is auto-dismissed on a timer — so a message
+  // that arrives while they look away is never missed. The head of the queue is
+  // whatever is currently on screen.
+  const [messageQueue, setMessageQueue] = useState<CurrentMessage[]>([])
+  const currentMessage = messageQueue[0] ?? null
   const [sosTriggered, setSosTriggered] = useState(false)
   const [micDenied, setMicDenied] = useState(false)
   const [showGazePanel, setShowGazePanel] = useState(false)
@@ -96,7 +107,6 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
 
   const audioCtxRef = useRef<AudioContext | null>(null)
   const socketRef = useRef<Socket | null>(null)
-  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sosAmplitudeRef = useRef(0)
   const sosStartRef = useRef<number | null>(null)
   const micCleanupRef = useRef<(() => void) | null>(null)
@@ -259,6 +269,30 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
     [dashboardUrl, deviceToken],
   )
 
+  // ── Advance past the current message to the next queued one (or back to idle
+  // when the queue empties). Called when the patient hits "Next message", answers
+  // a Yes/No, or confirms a reply.
+  const advanceQueue = useCallback(() => {
+    setMessageQueue((q) => q.slice(1))
+    setRankedSuggestions(null)
+  }, [])
+
+  // ── Whenever a new message reaches the head of the queue, read it aloud and
+  // prefetch reply suggestions — exactly once per message (tracked by id), so
+  // re-renders never replay the audio.
+  const spokenMessageIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!currentMessage) {
+      spokenMessageIdRef.current = null
+      return
+    }
+    if (spokenMessageIdRef.current === currentMessage.id) return
+    spokenMessageIdRef.current = currentMessage.id
+    setRankedSuggestions(null)
+    if (!currentMessage.isYesNo) void fetchSuggestions(currentMessage.content)
+    void playTTS(currentMessage.id, currentMessage.content)
+  }, [currentMessage, fetchSuggestions, playTTS])
+
   // ── SOS dispatch
   const triggerSOS = useCallback(async () => {
     if (!patientConfig) return
@@ -319,12 +353,14 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
     [speakLocal],
   )
 
-  // Step 2a — confirmed: send it, then close the phrase board.
+  // Step 2a — confirmed: send it, close the phrase board, and advance past the
+  // message just replied to (a no-op when the board was opened from idle).
   const confirmPhrase = useCallback(() => {
     if (phrasePending) postPhrase(phrasePending)
     setPhrasePending(null)
     setShowPhraseBoard(false)
-  }, [phrasePending, postPhrase])
+    advanceQueue()
+  }, [phrasePending, postPhrase, advanceQueue])
 
   // Step 2b — cancelled: drop the candidate and return to the board.
   const cancelPhrase = useCallback(() => setPhrasePending(null), [])
@@ -348,22 +384,12 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
 
       socket.on('NEW_MESSAGE', (envelope: ServerToClientMessage) => {
         if (envelope.type !== 'NEW_MESSAGE') return
-        const { id, content, isYesNo, toneClass } = envelope.payload
-        setCurrentMessage({ id, content, isYesNo, toneClass })
-        setRankedSuggestions(null)
-
-        if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
-        if (!isYesNo) {
-          clearTimerRef.current = setTimeout(() => {
-            setCurrentMessage(null)
-            setRankedSuggestions(null)
-          }, displaySeconds * 1000)
-          // Prefetch ranked reply suggestions so the phrase board can open
-          // straight into "suggested replies" for this message.
-          void fetchSuggestions(content)
-        }
-
-        void playTTS(id, content)
+        const { id, content, isYesNo, toneClass, mediaUrl, mediaType } = envelope.payload
+        // Queue it — never overwrite a message the patient is still reading. The
+        // head-of-queue effect handles TTS + suggestions once it reaches screen.
+        setMessageQueue((q) =>
+          q.some((m) => m.id === id) ? q : [...q, { id, content, isYesNo, toneClass, mediaUrl, mediaType }],
+        )
       })
 
       socket.on('CAMERA_CONFIG_UPDATE', (envelope: ServerToClientMessage) => {
@@ -377,7 +403,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
         socketRef.current = null
       }
     },
-    [wsServerUrl, displaySeconds, playTTS, fetchSuggestions],
+    [wsServerUrl],
   )
 
   // ── Start everything after activation
@@ -396,7 +422,6 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
     })
 
     return () => {
-      if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
       micCleanupRef.current?.()
       audioCtxRef.current?.close().catch(console.error)
     }
@@ -412,13 +437,6 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
       micCleanupRef.current?.()
     }
   }, [activated, patientConfig, connectSocket, startMicListener])
-
-  // ── Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
-    }
-  }, [])
 
   // ── Start Session (audio unlock)
   if (!activated) {
@@ -513,9 +531,10 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
               )}
               <StatusPill>
                 <span style={{ color: colors.brand.deep }}>
-                  {interactionMode === 'gaze' ? 'Dwell · 1.5s' : 'Blink to choose'}
+                  {interactionMode === 'gaze' ? 'Look to move · blink ×2' : 'Blink to choose'}
                 </span>
               </StatusPill>
+              <GazeSteerHUD />
               {micDenied && (
                 <StatusPill><span style={{ color: colors.patient.sosInk }}>Vocal SOS off</span></StatusPill>
               )}
@@ -539,26 +558,37 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
             messageId={currentMessage.id}
             dashboardUrl={dashboardUrl}
             deviceToken={deviceToken}
-            onReply={() => setCurrentMessage(null)}
+            onReply={advanceQueue}
           />
         ) : currentMessage ? (
           /* ── Read-message layout ── */
           <div className="relative z-[2] flex flex-1 flex-col items-center justify-center px-11 pb-6">
-            <BlobAgent tone={toBlobTone(currentMessage.toneClass)} speaking={speaking} size="184px" float={false} className="mb-7" />
-            <p
-              className="mb-7 max-w-5xl text-center"
-              style={{
-                fontFamily: typography.fontFamily.serif,
-                fontSize: 'clamp(34px, 5vw, 52px)',
-                lineHeight: 1.28,
-                fontWeight: 500,
-                letterSpacing: '-0.01em',
-                color: colors.ink,
-                textWrap: 'pretty',
-              }}
-            >
-              “{currentMessage.content}”
-            </p>
+            <BlobAgent tone={toBlobTone(currentMessage.toneClass)} speaking={speaking} size={currentMessage.mediaUrl ? '120px' : '184px'} float={false} className="mb-5" />
+            {currentMessage.mediaUrl && (
+              <div className="mb-6 flex justify-center">
+                {currentMessage.mediaType === 'video' ? (
+                  <video
+                    src={currentMessage.mediaUrl}
+                    className="max-h-[38vh] rounded-[24px]"
+                    style={{ boxShadow: '0 16px 40px rgba(36,30,43,.16)' }}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    controls
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={currentMessage.mediaUrl}
+                    alt=""
+                    className="max-h-[38vh] rounded-[24px] object-contain"
+                    style={{ boxShadow: '0 16px 40px rgba(36,30,43,.16)' }}
+                  />
+                )}
+              </div>
+            )}
+            <RevealMessage key={currentMessage.id} content={currentMessage.content} />
             {speaking && (
               <div
                 className="flex items-center gap-4 rounded-full bg-white px-6 py-3.5"
@@ -573,13 +603,22 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
                 <span className="font-bold" style={{ color: colors.inkMuted, fontSize: 16 }}>Reading aloud…</span>
               </div>
             )}
+            {messageQueue.length > 1 && (
+              <div
+                className="mt-1 flex items-center gap-2.5 rounded-full bg-white px-5 py-2.5 font-bold"
+                style={{ boxShadow: '0 1px 3px rgba(36,30,43,.06)', color: colors.brand.deep, fontSize: 16 }}
+              >
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: colors.brand.primary }} />
+                {messageQueue.length - 1} more {messageQueue.length - 1 === 1 ? 'message' : 'messages'} waiting
+              </div>
+            )}
             <div className="mt-8 flex flex-wrap justify-center gap-5">
               <ActionTile id="read:again" icon="🔊" label="Play again" primary
                 onSelect={() => void playTTS(currentMessage.id, currentMessage.content)} />
               <ActionTile id="read:reply" icon="↩" label="Reply"
                 onSelect={() => setShowPhraseBoard(true)} />
-              <ActionTile id="read:next" icon="→" label="Next message"
-                onSelect={() => { setCurrentMessage(null); setRankedSuggestions(null) }} />
+              <ActionTile id="read:next" icon="→" label={messageQueue.length > 1 ? 'Next message' : 'Done'}
+                onSelect={advanceQueue} />
             </div>
           </div>
         ) : (
@@ -590,7 +629,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, displaySeconds, devic
               <div className="text-center" style={{ fontFamily: typography.fontFamily.serif, fontSize: 'clamp(32px,4vw,46px)', fontWeight: 600, letterSpacing: '-0.015em', color: colors.ink }}>
                 I'm right here.
               </div>
-              <div className="mt-2" style={{ fontSize: 22, color: colors.inkMuted }}>Look at a card to begin.</div>
+              <div className="mt-2" style={{ fontSize: 22, color: colors.inkMuted }}>Look left or right to move · blink twice to choose.</div>
             </div>
 
             {/* Tile row */}
@@ -702,6 +741,47 @@ function SosTarget({ onTrigger }: { onTrigger: () => void }) {
   return <SOSButton ref={ref} focused={focused} onClick={onTrigger} />
 }
 
+/**
+ * Renders a caregiver message with a gentle word-by-word reveal. Each word fades
+ * up on a staggered delay (CSS only). Because the stagger is pure CSS animation,
+ * `prefers-reduced-motion` (handled globally in globals.css) collapses it to an
+ * instant, fully-legible paragraph — no word is ever left hidden.
+ */
+function RevealMessage({ content }: { content: string }) {
+  const words = content.split(/\s+/).filter(Boolean)
+  return (
+    <p
+      className="mb-7 max-w-5xl text-center"
+      style={{
+        fontFamily: typography.fontFamily.serif,
+        fontSize: 'clamp(34px, 5vw, 52px)',
+        lineHeight: 1.28,
+        fontWeight: 500,
+        letterSpacing: '-0.01em',
+        color: colors.ink,
+        textWrap: 'pretty',
+      }}
+    >
+      “
+      {words.map((word, i) => (
+        <Fragment key={i}>
+          <span
+            style={{
+              display: 'inline-block',
+              animation: 'wordIn 420ms ease-out both',
+              animationDelay: `${i * 75}ms`,
+            }}
+          >
+            {word}
+          </span>
+          {i < words.length - 1 ? ' ' : ''}
+        </Fragment>
+      ))}
+      ”
+    </p>
+  )
+}
+
 /** Small white status chip used in the top status bar. */
 function StatusPill({ children }: { children: ReactNode }) {
   return (
@@ -714,32 +794,87 @@ function StatusPill({ children }: { children: ReactNode }) {
   )
 }
 
+/**
+ * One-shot inner ring that flares the moment gaze focus lands on a target. It is
+ * rendered only while the target is focused and remounts on each new focus, so
+ * the CSS animation replays every time — the patient sees the step arrive.
+ */
+function FocusArriveRing({ radius, light = false }: { radius: number; light?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-10"
+      style={{ borderRadius: radius, animation: `${light ? 'focusArriveLight' : 'focusArrive'} 460ms ease-out` }}
+    />
+  )
+}
+
+/**
+ * Global steering indicator: shows the live gaze direction and a bar that fills
+ * over the step-sustain window, so the patient can see their eye movement is
+ * about to move focus to the next tile — before it happens. Gaze mode only.
+ */
+function GazeSteerHUD() {
+  const { mode, gazeDirection } = useInteraction()
+  if (mode !== 'gaze') return null
+  const step = gazeStepDirection(gazeDirection)
+  const next = step === 'next' // visually rightward in reading order
+  return (
+    <div
+      className="flex items-center gap-2.5 rounded-full bg-white px-4 py-2.5"
+      style={{ boxShadow: '0 1px 3px rgba(36,30,43,.06)' }}
+    >
+      <span aria-hidden style={{ fontSize: 22, lineHeight: 1, color: step && !next ? colors.brand.primary : colors.inkFaint, fontWeight: 800 }}>‹</span>
+      <span className="relative h-2.5 w-20 overflow-hidden rounded-full" style={{ background: 'rgba(124,92,252,.16)' }}>
+        {step ? (
+          <span
+            key={step}
+            className="absolute inset-0 rounded-full"
+            style={{ background: colors.brand.primary, transformOrigin: next ? 'left' : 'right', animation: `steerFill ${STEP_SUSTAIN_MS}ms linear forwards` }}
+          />
+        ) : (
+          <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full" style={{ background: colors.inkFaint }} />
+        )}
+      </span>
+      <span aria-hidden style={{ fontSize: 22, lineHeight: 1, color: step && next ? colors.brand.primary : colors.inkFaint, fontWeight: 800 }}>›</span>
+    </div>
+  )
+}
+
 /** A large gaze-selectable home tile (sample "Patient — Home"). */
 function HomeTile({
   id, icon, iconBg, title, subtitle, onSelect,
 }: {
   id: string; icon: string; iconBg: string; title: string; subtitle: string; onSelect: () => void
 }) {
-  const { ref, focused, dwellProgress } = useInteractiveTarget<HTMLButtonElement>(id, onSelect)
+  const { ref, focused, armed, dwellProgress } = useInteractiveTarget<HTMLButtonElement>(id, onSelect)
   return (
     <button
       ref={ref}
       type="button"
       onClick={onSelect}
       aria-label={title}
-      className="relative flex max-w-[300px] flex-1 flex-col overflow-hidden rounded-[28px] bg-white p-8 text-left transition-transform active:scale-[0.98]"
+      className="relative flex max-w-[300px] flex-1 flex-col overflow-hidden rounded-[28px] bg-white p-8 text-left transition-transform duration-200 active:scale-[0.98]"
       style={{
         boxShadow: focused
-          ? '0 12px 30px rgba(124,92,252,.22)'
+          ? '0 16px 36px rgba(124,92,252,.28)'
           : '0 8px 24px rgba(36,30,43,.07)',
-        border: `3px solid ${focused ? colors.brand.primary : 'transparent'}`,
+        border: `${focused ? 4 : 3}px solid ${focused ? colors.brand.primary : 'transparent'}`,
+        outline: armed ? `5px solid ${colors.brand.soft}` : 'none',
+        transform: focused ? 'scale(1.03)' : 'scale(1)',
       }}
     >
       <DwellRing progress={dwellProgress} color={colors.brand.primary} />
+      {focused && <FocusArriveRing radius={28} />}
       <span className="relative mb-5 flex h-16 w-16 items-center justify-center rounded-[20px]"
         style={{ background: iconBg, fontSize: 32 }}>{icon}</span>
       <span className="relative font-bold" style={{ fontSize: 26, color: colors.ink }}>{title}</span>
-      <span className="relative mt-1.5" style={{ fontSize: 17, color: colors.inkMuted }}>{subtitle}</span>
+      <span
+        className="relative mt-1.5 font-bold"
+        style={{ fontSize: 17, color: armed ? colors.brand.deep : colors.inkMuted, animation: armed ? 'armPulse 1.2s ease-in-out infinite' : undefined }}
+      >
+        {armed ? 'Blink again to confirm ✓' : subtitle}
+      </span>
     </button>
   )
 }
@@ -750,14 +885,14 @@ function ActionTile({
 }: {
   id: string; icon: string; label: string; primary?: boolean; onSelect: () => void
 }) {
-  const { ref, focused, dwellProgress } = useInteractiveTarget<HTMLButtonElement>(id, onSelect)
+  const { ref, focused, armed, dwellProgress } = useInteractiveTarget<HTMLButtonElement>(id, onSelect)
   return (
     <button
       ref={ref}
       type="button"
       onClick={onSelect}
       aria-label={label}
-      className="relative flex items-center gap-4 overflow-hidden rounded-[24px] px-11 py-6 font-bold transition-transform active:scale-95"
+      className="relative flex items-center gap-4 overflow-hidden rounded-[24px] px-11 py-6 font-bold transition-transform duration-200 active:scale-95"
       style={{
         background: primary ? colors.brand.primary : '#fff',
         color: primary ? '#fff' : colors.ink,
@@ -765,12 +900,19 @@ function ActionTile({
         boxShadow: primary
           ? '0 10px 26px rgba(124,92,252,.28)'
           : focused ? '0 8px 20px rgba(124,92,252,.18)' : '0 4px 14px rgba(36,30,43,.05)',
-        outline: focused ? `4px solid ${colors.brand.soft}` : 'none',
+        outline: armed ? `5px solid ${colors.brand.soft}` : focused ? `4px solid ${colors.brand.soft}` : 'none',
+        transform: focused ? 'scale(1.04)' : 'scale(1)',
       }}
     >
       <DwellRing progress={dwellProgress} color={primary ? '#fff' : colors.brand.primary} size={38} inset={10} />
+      {focused && <FocusArriveRing radius={24} light={primary} />}
       <span className="relative" style={{ fontSize: 28 }}>{icon}</span>
-      <span className="relative" style={{ fontSize: 24 }}>{label}</span>
+      <span
+        className="relative"
+        style={{ fontSize: 24, animation: armed ? 'armPulse 1.2s ease-in-out infinite' : undefined }}
+      >
+        {armed ? 'Blink to confirm' : label}
+      </span>
     </button>
   )
 }

@@ -51,6 +51,14 @@ const LM = {
 
 const FACE_LOSS_TIMEOUT_MS = 5000
 
+// One physical blink spans several frames where the eyes read as closed. We must
+// emit exactly ONE selection per blink (1 blink = 1 click). Two guards enforce
+// that: a latch that blocks re-firing until the eyes reopen (handles arbitrarily
+// long blinks), and a short refractory window that absorbs a single-frame EAR
+// flicker mid-blink. The deliberate arm→confirm double-blink still works — those
+// are separate blinks with the eyes reopening in between.
+const BLINK_COOLDOWN_MS = 350
+
 interface UseGazeTrackerResult {
   modelReady: boolean
   gazeDirection: GazeDirection
@@ -90,6 +98,11 @@ export function useGazeTracker({ videoRef, enabled, earThreshold }: UseGazeTrack
   } | null>(null)
   const animFrameRef = useRef<number | null>(null)
   const blinkConsecutiveRef = useRef(0)
+  // Set true once a blink has fired; cleared only when the eyes reopen, so a
+  // single sustained blink can never fire more than once.
+  const blinkLatchedRef = useRef(false)
+  // Timestamp of the last fired blink — enforces a refractory window.
+  const lastBlinkTimeRef = useRef(0)
   const lastFaceSeenRef = useRef(0)
 
   // Adaptive-baseline gaze state (persists across frames, never re-renders)
@@ -205,12 +218,25 @@ export function useGazeTracker({ videoRef, enabled, earThreshold }: UseGazeTrack
 
         if (blinking) {
           blinkConsecutiveRef.current++
-          if (blinkConsecutiveRef.current >= 2) {
+          const nowMs = Date.now()
+          // Fire once per blink: need ≥2 closed frames, the latch must be open
+          // (eyes have reopened since the last fire), and we must be past the
+          // refractory window. Latch immediately so the rest of this closed-eye
+          // episode emits nothing further.
+          if (
+            blinkConsecutiveRef.current >= 2 &&
+            !blinkLatchedRef.current &&
+            nowMs - lastBlinkTimeRef.current >= BLINK_COOLDOWN_MS
+          ) {
             setBlinkSignal(prev => prev + 1)
-            blinkConsecutiveRef.current = 0
+            blinkLatchedRef.current = true
+            lastBlinkTimeRef.current = nowMs
           }
         } else {
+          // Eyes open — reset the consecutive counter and release the latch so
+          // the next genuine blink can fire.
           blinkConsecutiveRef.current = 0
+          blinkLatchedRef.current = false
         }
 
         // Gaze only when the eyes are open: closed-eye iris landmarks are

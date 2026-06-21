@@ -60,6 +60,11 @@ export function YesNoScreen({ question, messageId, dashboardUrl, deviceToken, on
   const { focusedTargetId, dwellProgress } = useInteraction()
   const yesDwell = focusedTargetId === 'yes' ? dwellProgress : 0
   const noDwell = focusedTargetId === 'no' ? dwellProgress : 0
+  // Which half currently holds focus — drives a clear pre-arm highlight + a flash
+  // when focus lands, so the patient can tell which answer their gaze has landed
+  // on before they blink to confirm.
+  const yesFocused = focusedTargetId === 'yes'
+  const noFocused = focusedTargetId === 'no'
 
   const R = 100
   const CIRC = 2 * Math.PI * R
@@ -91,9 +96,16 @@ export function YesNoScreen({ question, messageId, dashboardUrl, deviceToken, on
           type="button"
           onClick={() => void submitReply('yes')}
           aria-label="Yes"
-          className="relative flex flex-1 flex-col items-center justify-center"
-          style={{ background: 'linear-gradient(180deg,#E4F7F2 0%,#D2F0E8 100%)', borderRight: '2px solid #F4EEE6' }}
+          className="relative flex flex-1 flex-col items-center justify-center transition-transform duration-200"
+          style={{
+            background: yesFocused ? 'linear-gradient(180deg,#D2F0E8 0%,#BCE8DC 100%)' : 'linear-gradient(180deg,#E4F7F2 0%,#D2F0E8 100%)',
+            borderRight: '2px solid #F4EEE6',
+            boxShadow: yesFocused ? 'inset 0 0 0 8px rgba(14,147,132,.4)' : 'none',
+          }}
         >
+          {yesFocused && (
+            <span aria-hidden className="pointer-events-none absolute inset-0 z-10" style={{ animation: 'focusArriveLight 460ms ease-out' }} />
+          )}
           <div className="relative mb-7 h-[220px] w-[220px]">
             <svg viewBox="0 0 220 220" className="absolute inset-0" style={{ transform: 'rotate(-90deg)' }}>
               <circle cx="110" cy="110" r={R} fill="none" stroke="rgba(14,147,132,.18)" strokeWidth="10" />
@@ -116,9 +128,15 @@ export function YesNoScreen({ question, messageId, dashboardUrl, deviceToken, on
           type="button"
           onClick={() => void submitReply('no')}
           aria-label="No"
-          className="relative flex flex-1 flex-col items-center justify-center"
-          style={{ background: 'linear-gradient(180deg,#FBEDED 0%,#F6DEDE 100%)' }}
+          className="relative flex flex-1 flex-col items-center justify-center transition-transform duration-200"
+          style={{
+            background: noFocused ? 'linear-gradient(180deg,#F6DEDE 0%,#F0CECE 100%)' : 'linear-gradient(180deg,#FBEDED 0%,#F6DEDE 100%)',
+            boxShadow: noFocused ? 'inset 0 0 0 8px rgba(184,86,86,.4)' : 'none',
+          }}
         >
+          {noFocused && (
+            <span aria-hidden className="pointer-events-none absolute inset-0 z-10" style={{ animation: 'focusArriveLight 460ms ease-out' }} />
+          )}
           <div className="relative mb-7 h-[220px] w-[220px]">
             <svg viewBox="0 0 220 220" className="absolute inset-0" style={{ transform: 'rotate(-90deg)' }}>
               <circle cx="110" cy="110" r={R} fill="none" stroke="rgba(154,68,68,.16)" strokeWidth="10" />
@@ -146,7 +164,7 @@ export function YesNoScreen({ question, messageId, dashboardUrl, deviceToken, on
       {/* Footer */}
       <div className="relative z-[3] flex items-center justify-center gap-3.5 py-6" style={{ background: colors.canvas }}>
         <span style={{ fontSize: 18, color: colors.inkFaint }}>💡</span>
-        <span className="font-bold" style={{ fontSize: 18, color: colors.inkMuted }}>Hold your gaze to either side to answer.</span>
+        <span className="font-bold" style={{ fontSize: 18, color: colors.inkMuted }}>Look to a side, then blink twice to answer.</span>
       </div>
     </div>
   )

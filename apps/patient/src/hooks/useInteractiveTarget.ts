@@ -11,7 +11,7 @@ import { useInteraction } from '@glance/shared/design/components'
  */
 export function useInteractiveTarget<T extends HTMLElement>(id: string, onSelect: () => void) {
   const ref = useRef<T | null>(null)
-  const { registerTarget, focusedTargetId, dwellProgress } = useInteraction()
+  const { registerTarget, focusedTargetId, armedTargetId, dwellProgress } = useInteraction()
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
 
@@ -24,5 +24,7 @@ export function useInteractiveTarget<T extends HTMLElement>(id: string, onSelect
   }, [registerTarget, id])
 
   const focused = focusedTargetId === id
-  return { ref, focused, dwellProgress: focused ? dwellProgress : 0 }
+  // Armed: a first blink landed on this focused target — a second blink confirms.
+  const armed = focused && armedTargetId === id
+  return { ref, focused, armed, dwellProgress: focused ? dwellProgress : 0 }
 }

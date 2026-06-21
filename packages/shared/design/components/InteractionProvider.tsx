@@ -15,54 +15,47 @@ export interface InteractiveTarget {
   id: string
   ref: React.RefObject<HTMLElement | null>
   onSelect: () => void
-  /** Which gaze direction activates this target in gaze mode */
+  /** Reserved hint for direction-mapped layouts; the default gaze navigation
+   *  steps through targets in reading order regardless of this value. */
   gazeDirection?: GazeDirection
 }
 
 interface InteractionContextValue {
   registerTarget: (target: InteractiveTarget) => () => void
   mode: 'gaze' | 'scan'
-  /** Id of the target the gaze cursor (or scan highlight) is currently over. */
+  /** Id of the target currently focused (gaze step-focus or scan highlight). */
   focusedTargetId: string | null
-  /** Dwell completion fraction [0, 1] toward firing the focused target. */
+  /** Id of the target armed by a first blink, awaiting a confirming second blink. */
+  armedTargetId: string | null
+  /** Back-compat ring signal: 1 when the focused target is armed (ready to
+   *  confirm), else 0. Lets existing dwell-ring visuals double as an arm cue. */
   dwellProgress: number
+  /** Live gaze direction in gaze mode ('center' when paused or in scan mode).
+   *  Lets targets/HUD render a steering cue so the patient can see their eye
+   *  movement is about to step focus. */
+  gazeDirection: GazeDirection
 }
 
-// ── Joystick-steered cursor physics ─────────────────────────────────────────
-// Kept local to the shared design package (no patient-app import) so the
-// provider stays portable. Mirrors apps/patient/src/utils/gazeUtils.ts, which
-// holds the unit-tested reference implementation.
-const GAZE_CURSOR_SPEED = 480 // pixels per second
-const CURSOR_RING_RADIUS = 16
-const CURSOR_RING_CIRCUMFERENCE = 2 * Math.PI * CURSOR_RING_RADIUS
+// Hold a gaze direction at least this long before focus steps once — long enough
+// that a passing glance never moves focus, short enough to feel responsive.
+// Exported so the patient steering cue can fill a progress bar over the same
+// window (the bar completes exactly when focus steps).
+export const STEP_SUSTAIN_MS = 350
 
-interface CursorPoint {
-  x: number
-  y: number
+/**
+ * Map a raw gaze direction to the on-screen step it will trigger, or null when
+ * the gaze is centered. The front camera images the patient un-mirrored, so the
+ * classifier's horizontal axis is flipped vs. the screen (a look to screen-right
+ * reads as 'left'); this mapping makes the cue point where focus actually moves:
+ * 'next' = later in reading order (visually right/down), 'prev' = earlier (left/up).
+ */
+export function gazeStepDirection(dir: GazeDirection): 'prev' | 'next' | null {
+  if (dir === 'center') return null
+  return dir === 'left' || dir === 'down' ? 'next' : 'prev'
 }
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v
-}
-
-function steerCursor(
-  pos: CursorPoint,
-  direction: GazeDirection,
-  dt: number,
-  width: number,
-  height: number,
-): CursorPoint {
-  const step = GAZE_CURSOR_SPEED * Math.max(0, dt)
-  let { x, y } = pos
-  if (direction === 'up') y -= step
-  else if (direction === 'down') y += step
-  else if (direction === 'left') x -= step
-  else if (direction === 'right') x += step
-  return { x: clamp(x, 0, width), y: clamp(y, 0, height) }
-}
-
-function pointInRect(p: CursorPoint, r: DOMRect): boolean {
-  return p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom
 }
 
 const InteractionContext = createContext<InteractionContextValue | null>(null)
@@ -76,52 +69,64 @@ export function useInteraction() {
 interface InteractionProviderProps {
   mode: 'gaze' | 'scan'
   gazeDirection?: GazeDirection
-  /** Live RAW (un-smoothed) gaze direction ref. When provided, the steered
-   *  cursor halts the instant this reads 'center' — no hysteresis stop-lag. */
+  /** @deprecated retained for call-site compatibility; no longer read. */
   gazeDirectionRawRef?: React.RefObject<GazeDirection>
-  /** Increments by 1 each time a blink is detected; triggers scan selection */
+  /** Increments by 1 each time a blink is detected; drives selection/confirm. */
   blinkSignal?: number
+  /** @deprecated dwell selection was replaced by blink-to-confirm. */
   gazeDwellMs?: number
   scanCycleMs?: number
-  /** Temporarily suspend all input handling (gaze cursor + scan). Used while a
-   *  modal caregiver flow is open (e.g. calibration) so the patient cannot
-   *  accidentally dwell-fire a target hidden behind the overlay. */
+  /** Temporarily suspend all input handling (gaze + scan). Used while a modal
+   *  caregiver flow is open (e.g. calibration) so the patient cannot
+   *  accidentally fire a target hidden behind the overlay. */
   paused?: boolean
   children: React.ReactNode
 }
 
+/**
+ * Hands-free interaction engine.
+ *
+ * Gaze mode is "sticky": the patient never steers a free cursor. Instead, one
+ * sustained look left/right/up/down steps a highlight between on-screen targets
+ * (reading order), and the highlight stays put until they look again. A first
+ * blink arms the focused target; a confirming second blink fires it. Looking
+ * away to another target before the second blink cancels the arm. This removes
+ * the edge-drift and pointing-accuracy problems of a free dwell cursor.
+ *
+ * Scan mode (the fallback when no camera/face is available) is unchanged: a
+ * highlight auto-cycles on a timer and a single blink (or Space) selects.
+ */
 export function InteractionProvider({
   mode,
   gazeDirection,
-  gazeDirectionRawRef,
   blinkSignal = 0,
-  gazeDwellMs = 1500,
   scanCycleMs = 1500,
   paused = false,
   children,
 }: InteractionProviderProps) {
   const targetsRef = useRef<InteractiveTarget[]>([])
-  const [focusedIndex, setFocusedIndex] = useState(0)
   const [focusedTargetId, setFocusedTargetId] = useState<string | null>(null)
-  const [dwellProgress, setDwellProgress] = useState(0)
-  // Bumped whenever the registered target set changes (a screen transition:
-  // entering/exiting YesNo, opening/closing the phrase board). The gaze loop
-  // watches this to recenter the cursor so a new screen starts from neutral.
+  const [armedTargetId, setArmedTargetId] = useState<string | null>(null)
+  const [focusedIndex, setFocusedIndex] = useState(0) // scan-mode cursor
+  // Bumped whenever the registered target set changes (a screen transition).
   const [targetsVersion, setTargetsVersion] = useState(0)
-  const recenterPendingRef = useRef(false)
-  const gazeDirectionRef = useRef<GazeDirection>('center')
-  const prevBlinkSignalRef = useRef(0)
-  // Cursor DOM handles — the steered cursor's position and dwell ring are driven
-  // imperatively in a rAF loop, never via React state, so movement stays smooth.
-  const cursorRef = useRef<HTMLDivElement | null>(null)
-  const dotRef = useRef<HTMLDivElement | null>(null)
-  const ringRef = useRef<SVGCircleElement | null>(null)
 
-  // Keep the latest gaze direction in a ref so the dwell loop below can read it
-  // without re-subscribing (and tearing down its timer) on every frame.
-  useEffect(() => {
-    gazeDirectionRef.current = gazeDirection ?? 'center'
-  }, [gazeDirection])
+  // Mirror focus/arm into refs so the event-driven step + blink effects read the
+  // latest value synchronously without re-subscribing on every render.
+  const focusedIdRef = useRef<string | null>(null)
+  const armedIdRef = useRef<string | null>(null)
+  const prevBlinkSignalRef = useRef(0)
+  const stepLatchedRef = useRef(false)
+  const stepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const setFocus = useCallback((id: string | null) => {
+    focusedIdRef.current = id
+    setFocusedTargetId(id)
+  }, [])
+  const setArmed = useCallback((id: string | null) => {
+    armedIdRef.current = id
+    setArmedTargetId(id)
+  }, [])
 
   const registerTarget = useCallback((target: InteractiveTarget) => {
     targetsRef.current = [...targetsRef.current, target]
@@ -132,13 +137,30 @@ export function InteractionProvider({
     }
   }, [])
 
-  // A target-set change means the active screen changed: ask the gaze loop to
-  // recenter the cursor on its next frame (see the rAF tick below).
-  useEffect(() => {
-    recenterPendingRef.current = true
-  }, [targetsVersion])
+  // Targets in reading order (top-to-bottom, then left-to-right) by live rect —
+  // the order gaze steps through.
+  const orderedTargets = useCallback((): InteractiveTarget[] => {
+    return [...targetsRef.current].sort((a, b) => {
+      const ra = a.ref.current?.getBoundingClientRect()
+      const rb = b.ref.current?.getBoundingClientRect()
+      if (!ra || !rb) return 0
+      const rowA = Math.round(ra.top / 56)
+      const rowB = Math.round(rb.top / 56)
+      if (rowA !== rowB) return rowA - rowB
+      return ra.left - rb.left
+    })
+  }, [])
 
-  // Scan mode: cycle focus on interval
+  // ── Screen change (or entering gaze mode) → focus the first target and drop
+  // any pending arm, so every new screen starts from a predictable neutral.
+  useEffect(() => {
+    if (mode !== 'gaze' || paused) return
+    setFocus(orderedTargets()[0]?.id ?? null)
+    setArmed(null)
+    stepLatchedRef.current = false
+  }, [mode, paused, targetsVersion, orderedTargets, setFocus, setArmed])
+
+  // ── Scan mode: auto-cycle the highlight on an interval.
   useEffect(() => {
     if (mode !== 'scan' || paused) {
       setFocusedIndex(0)
@@ -153,25 +175,92 @@ export function InteractionProvider({
     return () => clearInterval(interval)
   }, [mode, scanCycleMs, paused])
 
-  // Sync focusedTargetId with focusedIndex in scan mode
+  // Scan mode: reflect the cycling index into the focused target id.
   useEffect(() => {
-    if (mode === 'scan') {
-      setFocusedTargetId(targetsRef.current[focusedIndex]?.id ?? null)
-    } else {
-      setFocusedTargetId(null)
+    if (mode === 'scan' && !paused) {
+      setFocus(targetsRef.current[focusedIndex]?.id ?? null)
     }
-  }, [mode, focusedIndex])
+  }, [mode, focusedIndex, paused, setFocus])
 
-  // Scan mode: blink triggers selection
+  // Paused → clear all focus/arm so nothing is highlighted behind an overlay.
   useEffect(() => {
-    if (mode !== 'scan' || paused) return
-    if (blinkSignal > prevBlinkSignalRef.current) {
+    if (paused) {
+      setFocus(null)
+      setArmed(null)
+    }
+  }, [paused, setFocus, setArmed])
+
+  // Step the focus one target earlier ('prev') or later ('next') in reading
+  // order. Clamped at the ends (no wrap) so looking past the edge is a no-op
+  // rather than a surprising jump — directly fixing the old edge-drift problem.
+  const stepFocus = useCallback((screenDir: 'prev' | 'next') => {
+    const ordered = orderedTargets()
+    if (ordered.length === 0) return
+    const curIdx = ordered.findIndex(t => t.id === focusedIdRef.current)
+    const base = curIdx < 0 ? 0 : curIdx
+    const nextIdx = clamp(base + (screenDir === 'next' ? 1 : -1), 0, ordered.length - 1)
+    const nextId = ordered[nextIdx]?.id ?? null
+    if (nextId !== focusedIdRef.current) {
+      setFocus(nextId)
+      setArmed(null) // moving focus cancels a pending confirm
+    }
+  }, [orderedTargets, setFocus, setArmed])
+
+  // ── Gaze mode: a sustained look steps focus once, then latches until the eyes
+  // return to center (so holding a look never runs focus away).
+  useEffect(() => {
+    if (mode !== 'gaze' || paused) return
+    const dir = gazeDirection ?? 'center'
+    if (stepTimerRef.current) {
+      clearTimeout(stepTimerRef.current)
+      stepTimerRef.current = null
+    }
+    if (dir === 'center') {
+      stepLatchedRef.current = false // re-arm the stepper for the next look
+      return
+    }
+    if (stepLatchedRef.current) return // already stepped this hold
+    // Direction is non-center here, so this is always 'prev' | 'next'.
+    const screenDir = gazeStepDirection(dir) ?? 'next'
+    stepTimerRef.current = setTimeout(() => {
+      stepLatchedRef.current = true
+      stepFocus(screenDir)
+    }, STEP_SUSTAIN_MS)
+    return () => {
+      if (stepTimerRef.current) {
+        clearTimeout(stepTimerRef.current)
+        stepTimerRef.current = null
+      }
+    }
+  }, [gazeDirection, mode, paused, stepFocus])
+
+  // ── Blink handling for both modes.
+  // Scan: a blink fires the highlighted target. Gaze: the first blink arms the
+  // focused target; a second blink on the same target confirms and fires it.
+  useEffect(() => {
+    if (paused) return
+    if (blinkSignal <= prevBlinkSignalRef.current) {
       prevBlinkSignalRef.current = blinkSignal
-      targetsRef.current[focusedIndex]?.onSelect()
+      return
     }
-  }, [mode, blinkSignal, focusedIndex, paused])
+    prevBlinkSignalRef.current = blinkSignal
 
-  // Scan mode: spacebar / click helper for testing and accessibility
+    if (mode === 'scan') {
+      targetsRef.current[focusedIndex]?.onSelect()
+      return
+    }
+
+    const fid = focusedIdRef.current
+    if (!fid) return
+    if (armedIdRef.current === fid) {
+      setArmed(null)
+      targetsRef.current.find(t => t.id === fid)?.onSelect()
+    } else {
+      setArmed(fid)
+    }
+  }, [blinkSignal, mode, paused, focusedIndex, setArmed])
+
+  // Scan mode: spacebar selection helper for testing and accessibility.
   useEffect(() => {
     if (mode !== 'scan' || paused) return
     const handleKey = (e: KeyboardEvent) => {
@@ -184,220 +273,23 @@ export function InteractionProvider({
     return () => window.removeEventListener('keydown', handleKey)
   }, [mode, focusedIndex, paused])
 
-  // Gaze mode: joystick-steered cursor + bounding-box focus + dwell selection.
-  //
-  // The patient steers an on-screen cursor by looking up/down/left/right and
-  // halts it by looking back to center. When the cursor sits inside a target's
-  // bounding box that target is focused and a dwell timer fills; holding it
-  // there for `gazeDwellMs` fires the target. The cursor recenters after a
-  // selection fires and on a screen change (target-set change), so each new
-  // screen starts from a neutral center.
-  //
-  // Position and the dwell ring are written straight to the DOM every frame so
-  // 60fps movement never triggers a React re-render. Only the (rare) focus
-  // changes and a throttled dwell fraction flow through React state, for the
-  // CSS highlight on targets and any progress UI that reads the context.
-  useEffect(() => {
-    if (mode !== 'gaze' || paused) {
-      setDwellProgress(0)
-      setFocusedTargetId(null)
-      return
-    }
-
-    let pos: CursorPoint = {
-      x: window.innerWidth / 2,
-      y: window.innerHeight / 2,
-    }
-    let lastTs: number | null = null
-    let focusedId: string | null = null
-    let dwellStart: number | null = null
-    let needLeave = false // require leaving a target before it can re-fire
-    let reportedProgress = -1
-    let raf = 0
-
-    const setRing = (progress: number) => {
-      const ring = ringRef.current
-      if (ring) {
-        ring.style.strokeDashoffset = String(CURSOR_RING_CIRCUMFERENCE * (1 - progress))
-      }
-    }
-    const setHover = (hovering: boolean) => {
-      const dot = dotRef.current
-      if (dot) {
-        dot.style.backgroundColor = hovering ? '#5B3FD6' : '#7C5CFC'
-        dot.style.boxShadow = hovering
-          ? '0 0 0 10px rgba(124,92,252,0.12), 0 0 32px rgba(124,92,252,0.65)'
-          : '0 0 0 6px rgba(124,92,252,0.18), 0 0 24px rgba(124,92,252,0.5)'
-      }
-    }
-    const reportProgress = (progress: number) => {
-      // Throttle React updates: only when the rendered percent moves enough.
-      if (Math.abs(progress - reportedProgress) >= 0.02 || progress === 0 || progress === 1) {
-        reportedProgress = progress
-        setDwellProgress(progress)
-      }
-    }
-
-    const tick = (now: number) => {
-      const width = window.innerWidth
-      const height = window.innerHeight
-
-      // Screen changed since the last frame → recenter the cursor and drop any
-      // in-progress focus/dwell so the new screen starts neutral.
-      if (recenterPendingRef.current) {
-        recenterPendingRef.current = false
-        pos = { x: width / 2, y: height / 2 }
-        focusedId = null
-        dwellStart = null
-        needLeave = false
-        setFocusedTargetId(null)
-        setHover(false)
-        setRing(0)
-        reportProgress(0)
-      }
-
-      // Steering direction: use the smoothed direction to START/continue moving
-      // (rejects single-frame noise), but halt the instant the RAW signal reads
-      // center, so the cursor stops with no hysteresis lag the moment the eyes
-      // return to center to park it on a target.
-      const smoothedDir = gazeDirectionRef.current
-      const liveDir = gazeDirectionRawRef?.current ?? smoothedDir
-      const steered: GazeDirection = liveDir === 'center' ? 'center' : smoothedDir
-
-      // The front camera images the patient un-mirrored — it sees them like
-      // another person, not like a mirror — so the classifier's horizontal axis
-      // is flipped relative to the screen the patient is steering on: looking
-      // screen-right reads as 'left' and vice-versa. Swap them so the cursor
-      // follows the gaze. Vertical is not mirrored, so up/down pass through.
-      const dir: GazeDirection =
-        steered === 'left' ? 'right' : steered === 'right' ? 'left' : steered
-
-      const dt = lastTs === null ? 0 : Math.min(0.1, (now - lastTs) / 1000)
-      lastTs = now
-      pos = steerCursor(pos, dir, dt, width, height)
-
-      const cursor = cursorRef.current
-      if (cursor) {
-        cursor.style.left = `${pos.x}px`
-        cursor.style.top = `${pos.y}px`
-      }
-
-      // Which target (if any) does the cursor sit inside? First match wins.
-      let hit: InteractiveTarget | null = null
-      for (const t of targetsRef.current) {
-        const el = t.ref.current
-        if (el && pointInRect(pos, el.getBoundingClientRect())) {
-          hit = t
-          break
-        }
-      }
-      const hitId = hit?.id ?? null
-
-      if (hitId !== focusedId) {
-        focusedId = hitId
-        setFocusedTargetId(hitId)
-        setHover(hit !== null)
-        // Re-entering a (possibly new) target clears the post-fire latch and
-        // restarts the dwell.
-        needLeave = false
-        dwellStart = hit ? now : null
-        setRing(0)
-        reportProgress(0)
-      }
-
-      if (hit && !needLeave) {
-        if (dwellStart === null) dwellStart = now
-        const progress = Math.min(1, (now - dwellStart) / gazeDwellMs)
-        setRing(progress)
-        reportProgress(progress)
-
-        if (progress >= 1) {
-          hit.onSelect()
-          // Recenter and require leaving before another fire.
-          needLeave = true
-          dwellStart = null
-          pos = { x: width / 2, y: height / 2 }
-          setHover(false)
-          setRing(0)
-          reportProgress(0)
-        }
-      }
-
-      raf = requestAnimationFrame(tick)
-    }
-
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [mode, gazeDwellMs, paused])
+  const dwellProgress = armedTargetId ? 1 : 0
+  // Only surface a live direction while gaze input is actually driving focus.
+  const liveGazeDirection: GazeDirection =
+    mode === 'gaze' && !paused ? gazeDirection ?? 'center' : 'center'
 
   return (
     <InteractionContext.Provider
-      value={{ registerTarget, mode, focusedTargetId, dwellProgress }}
+      value={{
+        registerTarget,
+        mode,
+        focusedTargetId,
+        armedTargetId,
+        dwellProgress,
+        gazeDirection: liveGazeDirection,
+      }}
     >
       {children}
-      {/* Joystick-steered gaze cursor. Hidden in scan mode (scan falls back to
-          auto-cycling highlights + blink) and while input is paused (e.g. a
-          calibration overlay). Position/ring are driven imperatively by the rAF
-          loop above. */}
-      {mode === 'gaze' && !paused && (
-        <div
-          ref={cursorRef}
-          aria-hidden
-          style={{
-            position: 'fixed',
-            left: '50%',
-            top: '50%',
-            width: 36,
-            height: 36,
-            transform: 'translate(-50%, -50%)',
-            pointerEvents: 'none',
-            zIndex: 9999,
-          }}
-        >
-          <svg
-            width={36}
-            height={36}
-            viewBox="0 0 36 36"
-            style={{ position: 'absolute', inset: 0 }}
-          >
-            <circle
-              cx={18}
-              cy={18}
-              r={CURSOR_RING_RADIUS}
-              fill="none"
-              stroke="rgba(124,92,252,0.22)"
-              strokeWidth={3}
-            />
-            <circle
-              ref={ringRef}
-              cx={18}
-              cy={18}
-              r={CURSOR_RING_RADIUS}
-              fill="none"
-              stroke="#7C5CFC"
-              strokeWidth={3}
-              strokeLinecap="round"
-              strokeDasharray={CURSOR_RING_CIRCUMFERENCE}
-              strokeDashoffset={CURSOR_RING_CIRCUMFERENCE}
-              transform="rotate(-90 18 18)"
-            />
-          </svg>
-          <div
-            ref={dotRef}
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: '50%',
-              width: 16,
-              height: 16,
-              transform: 'translate(-50%, -50%)',
-              borderRadius: '9999px',
-              backgroundColor: '#7C5CFC',
-              boxShadow: '0 0 0 6px rgba(124,92,252,0.18), 0 0 24px rgba(124,92,252,0.5)',
-            }}
-          />
-        </div>
-      )}
     </InteractionContext.Provider>
   )
 }

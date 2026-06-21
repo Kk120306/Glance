@@ -28,6 +28,7 @@ body {
 @keyframes urgentHalo  { 0%,100% { transform: scale(1); opacity: .55; } 50% { transform: scale(1.18); opacity: .2; } }
 @keyframes ring2     { 0% { transform: scale(.7); opacity: .6; } 100% { transform: scale(1.5); opacity: 0; } }
 @keyframes wave      { 0%,100% { transform: scaleY(.35); }       50% { transform: scaleY(1); } }
+@keyframes wordIn    { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
 @keyframes mouth     { 0%,100% { transform: scaleY(.5); }        50% { transform: scaleY(1.15); } }
 @keyframes blobTalk  { 0%,100% { transform: scaleY(.4); }        50% { transform: scaleY(1.1); } }
 @keyframes scanGlow  { 0%,100% { box-shadow: 0 0 0 4px rgba(245,158,11,.25), 0 16px 36px rgba(245,158,11,.22); }
@@ -35,6 +36,16 @@ body {
 @keyframes scanBar   { 0% { transform: scaleX(0); }              100% { transform: scaleX(1); } }
 @keyframes blinkHint { 0%,100% { opacity: .4; }                  50% { opacity: 1; } }
 @keyframes pulseDot  { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.8); } }
+/* Navigation feedback: an inner ring that flares once when gaze focus lands on a
+   tile, so the patient sees the step happened. Inset so it shows even inside the
+   tile's overflow clip. */
+@keyframes focusArrive      { 0% { box-shadow: inset 0 0 0 0 rgba(124,92,252,.55); } 35% { box-shadow: inset 0 0 0 7px rgba(124,92,252,.5); } 100% { box-shadow: inset 0 0 0 12px rgba(124,92,252,0); } }
+@keyframes focusArriveLight { 0% { box-shadow: inset 0 0 0 0 rgba(255,255,255,.7); }  35% { box-shadow: inset 0 0 0 7px rgba(255,255,255,.6); } 100% { box-shadow: inset 0 0 0 12px rgba(255,255,255,0); } }
+/* Steering predictor: a bar that fills over the step-sustain window while the
+   eyes are held off-center, so the patient sees the move coming before it fires. */
+@keyframes steerFill   { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+/* Armed (first blink landed): gentle pulse on the confirm prompt. */
+@keyframes armPulse    { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 
 @media (prefers-reduced-motion: reduce) {
   .blob-agent, [style*="animation"] { animation: none !important; }
