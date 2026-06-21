@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSession } from '@/lib/auth-client'
 import { useDashboard } from '@/components/DashboardProvider'
 import { StatCard } from '@/components/StatCard'
@@ -15,6 +15,27 @@ export default function DashboardOverviewPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterMode, setFilterMode] = useState<'all' | 'needs-attention'>('all')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+
+  // Headline counts (scoped to this caregiver's patients). Null until loaded;
+  // gaze/response metrics are not yet instrumented and render as placeholders.
+  const [stats, setStats] = useState<{ messagesToday: number; helpRequestsToday: number } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/stats')
+        if (res.ok && !cancelled) {
+          setStats((await res.json()) as { messagesToday: number; helpRequestsToday: number })
+        }
+      } catch {
+        // best-effort: leave placeholders on failure
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Dynamic greeting based on time of day
   const greeting = useMemo(() => {
@@ -114,10 +135,10 @@ export default function DashboardOverviewPage() {
 
       {/* Stats Row */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <StatCard label="Messages today" value={37} />
-        <StatCard label="Avg. gaze accuracy" value="94%" valueColor="#0B6F63" />
-        <StatCard label="Help requests" value={5} />
-        <StatCard label="Avg. response" value="1m 12s" />
+        <StatCard label="Messages today" value={stats?.messagesToday ?? '—'} />
+        <StatCard label="Avg. gaze accuracy" value="—" />
+        <StatCard label="Help requests" value={stats?.helpRequestsToday ?? '—'} />
+        <StatCard label="Avg. response" value="—" />
       </div>
 
       {/* Section Header with filters */}
