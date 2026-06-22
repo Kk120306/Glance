@@ -38,14 +38,26 @@ describe('GET /api/patients — scoped list', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns only the caller’s associated patients', async () => {
+  it('returns the caller’s associated patients with unseen counts attached', async () => {
     mocks.getSession.mockResolvedValue(fakeSession)
     mocks.getFamilyMemberFromSession.mockResolvedValue(fakeFamilyMember)
-    mocks.queueResult([{ id: UUID_A, name: 'Grandpa' }])
+    mocks.queueResult([{ id: UUID_A, name: 'Grandpa' }]) // patient list
+    mocks.queueResult([{ patientId: UUID_A, value: 3 }]) // unseen-count rollup
     const res = await listPatients()
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual([{ id: UUID_A, name: 'Grandpa' }])
-    expect(mocks.dbCalls.select).toBe(1)
+    // Each patient is annotated with its outstanding (unseen) family-message count.
+    expect(await res.json()).toEqual([{ id: UUID_A, name: 'Grandpa', unseenCount: 3 }])
+    expect(mocks.dbCalls.select).toBe(2) // patient list + unseen rollup
+  })
+
+  it('defaults unseenCount to 0 when a patient has no outstanding messages', async () => {
+    mocks.getSession.mockResolvedValue(fakeSession)
+    mocks.getFamilyMemberFromSession.mockResolvedValue(fakeFamilyMember)
+    mocks.queueResult([{ id: UUID_A, name: 'Grandpa' }]) // patient list
+    mocks.queueResult([]) // no unseen messages
+    const res = await listPatients()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual([{ id: UUID_A, name: 'Grandpa', unseenCount: 0 }])
   })
 })
 

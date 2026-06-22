@@ -8,13 +8,15 @@ import { BlobAgent } from './BlobAgent'
 
 interface YesNoScreenProps {
   question: string
+  /** Who asked (persona name, else family member's name); shown above the question. */
+  senderName?: string | null
   messageId: string
   dashboardUrl: string
   deviceToken: string
   onReply: (reply: 'yes' | 'no') => void
 }
 
-export function YesNoScreen({ question, messageId, dashboardUrl, deviceToken, onReply }: YesNoScreenProps) {
+export function YesNoScreen({ question, senderName, messageId, dashboardUrl, deviceToken, onReply }: YesNoScreenProps) {
   const { registerTarget } = useInteraction()
   const yesRef = useRef<HTMLButtonElement | null>(null)
   const noRef = useRef<HTMLButtonElement | null>(null)
@@ -78,7 +80,9 @@ export function YesNoScreen({ question, messageId, dashboardUrl, deviceToken, on
           style={{ boxShadow: '0 1px 3px rgba(36,30,43,.06)' }}
         >
           <span style={{ fontSize: 16 }}>🙋</span>
-          <span className="font-bold" style={{ fontSize: 15, color: colors.inkMuted }}>A question for you</span>
+          <span className="font-bold" style={{ fontSize: 15, color: colors.inkMuted }}>
+            {senderName ? `${senderName} asks` : 'A question for you'}
+          </span>
         </div>
         <div
           className="mx-auto max-w-4xl"

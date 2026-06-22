@@ -10,7 +10,7 @@ export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { data: session } = useSession()
-  const { patients, onlineStatus, refreshPatients } = useDashboard()
+  const { patients, totalUnseen } = useDashboard()
 
   // Determine active states
   const isPatientsActive = pathname === '/dashboard' || pathname.startsWith('/patients')
@@ -38,7 +38,7 @@ export function Sidebar() {
   })()
 
   return (
-    <aside className="flex w-[248px] shrink-0 flex-col border-r border-line bg-white px-[18px] py-[26px]">
+    <aside className="sticky top-0 flex h-screen w-[248px] shrink-0 flex-col self-start overflow-y-auto border-r border-line bg-white px-[18px] py-[26px]">
       {/* Brand Logo */}
       <div className="flex items-center gap-3 px-2 pb-7">
         <GlanceMark size={40} />
@@ -73,6 +73,15 @@ export function Sidebar() {
         <Link href="/dashboard/messages" className={navItemClass(isMessagesActive)}>
           <span className="text-xl">💬</span>
           <span>Messages</span>
+          {totalUnseen > 0 && (
+            <span
+              className="ml-auto rounded-full px-2.5 py-0.5 text-[13px] font-bold text-white"
+              style={{ background: '#E5484D' }}
+              title={`${totalUnseen} message${totalUnseen === 1 ? '' : 's'} your ${totalUnseen === 1 ? 'patient hasn’t' : 'patients haven’t'} seen yet`}
+            >
+              {totalUnseen}
+            </span>
+          )}
         </Link>
 
         {/* Voice Library Nav Item */}

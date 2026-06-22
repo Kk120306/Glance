@@ -16,6 +16,8 @@ interface PatientCardProps {
   lastActive?: string
   latestMessage?: string // Latest text message preview
   latestMessageTime?: string // '8s ago', '2m ago' etc
+  // Family messages this patient hasn't seen yet (read receipt outstanding).
+  unseenCount?: number
 }
 
 export function PatientCard({
@@ -29,6 +31,7 @@ export function PatientCard({
   lastActive = '—',
   latestMessage,
   latestMessageTime,
+  unseenCount = 0,
 }: PatientCardProps) {
   // Get two-letter initials
   const initials = name
@@ -109,6 +112,15 @@ export function PatientCard({
           <div className="flex-1 min-w-0">
             <div className="font-bold text-[20px] text-ink truncate">{name}</div>
           </div>
+          {unseenCount > 0 && (
+            <div
+              className="rounded-full px-[12px] py-[6px] text-[13px] font-bold text-white"
+              style={{ background: '#E5484D' }}
+              title={`${unseenCount} message${unseenCount === 1 ? '' : 's'} not seen yet`}
+            >
+              {unseenCount} unseen
+            </div>
+          )}
           <div className={`rounded-full px-[14px] py-[7px] text-[13px] font-bold ${statusBadgeBg}`}>
             {statusText}
           </div>

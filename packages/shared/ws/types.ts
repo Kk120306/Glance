@@ -8,8 +8,11 @@ export type CameraSchedule = {
 }
 
 export type ServerToClientMessage =
-  | { type: 'NEW_MESSAGE'; payload: Message }
-  | { type: 'MESSAGE_READ'; payload: { id: string } }
+  // `senderName` is the resolved display name for the message (persona name when
+  // sent as a persona, otherwise the family member's name). Optional so older
+  // emitters and patient-initiated messages (which carry no sender name) stay valid.
+  | { type: 'NEW_MESSAGE'; payload: Message & { senderName?: string | null } }
+  | { type: 'MESSAGE_READ'; payload: { id: string; patientId?: string } }
   | { type: 'CAMERA_CONFIG_UPDATE'; payload: { cameraOverrideActive: boolean; schedules: CameraSchedule[] } }
   | { type: 'SOS_TRIGGERED'; payload: { patientId: string; timestamp: string } }
   | { type: 'NEW_REPLY'; payload: { messageId: string; reply: 'yes' | 'no'; repliedAt: string } }

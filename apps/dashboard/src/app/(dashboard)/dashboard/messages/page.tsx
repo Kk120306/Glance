@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useDashboard } from '@/components/DashboardProvider'
 
 interface FeedItem {
   id: string
   content: string
   createdAt: string
   isYesNo: boolean
+  isRead: boolean
   reply: 'yes' | 'no' | null
   patientId: string
   patientName: string
@@ -27,25 +29,39 @@ function timeAgo(iso: string): string {
 }
 
 export default function MessagesPage() {
+  const { socket } = useDashboard()
   const [feed, setFeed] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = await fetch('/api/messages/recent')
-        if (res.ok && !cancelled) setFeed((await res.json()) as FeedItem[])
-      } catch {
-        // best-effort
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
+  const refreshFeed = useCallback(async () => {
+    try {
+      const res = await fetch('/api/messages/recent')
+      if (res.ok) setFeed((await res.json()) as FeedItem[])
+    } catch {
+      // best-effort
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    void refreshFeed()
+  }, [refreshFeed])
+
+  // Live updates: any new message, reply, or read receipt across the caregiver's
+  // patients refetches the (correctly joined) recent feed. Cheap and always correct.
+  useEffect(() => {
+    if (!socket) return
+    const onChange = () => void refreshFeed()
+    socket.on('NEW_MESSAGE', onChange)
+    socket.on('NEW_REPLY', onChange)
+    socket.on('MESSAGE_READ', onChange)
+    return () => {
+      socket.off('NEW_MESSAGE', onChange)
+      socket.off('NEW_REPLY', onChange)
+      socket.off('MESSAGE_READ', onChange)
+    }
+  }, [socket, refreshFeed])
 
   return (
     <main className="flex-1 bg-[#F4EEE6] p-[30px] px-[34px] min-h-screen overflow-y-auto">
@@ -92,6 +108,14 @@ export default function MessagesPage() {
                   {m.isYesNo && (
                     <span className="mt-1 inline-block rounded-full bg-surface-warm px-2.5 py-0.5 text-[12px] font-bold text-ink-muted">
                       Yes/No{m.reply ? ` · answered "${m.reply}"` : ' · awaiting reply'}
+                    </span>
+                  )}
+                  {!m.fromPatient && (
+                    <span
+                      className="mt-1 ml-2 inline-block text-[12px] font-bold"
+                      style={{ color: m.isRead ? '#0B6F63' : '#9A93A0' }}
+                    >
+                      {m.isRead ? 'Seen ✓' : 'Sent'}
                     </span>
                   )}
                 </div>

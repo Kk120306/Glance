@@ -47,9 +47,13 @@ export default function PatientDashboardPage() {
   const [isYesNo, setIsYesNo] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
-  // Optional media attachment (URL to an externally hosted photo or clip).
+  // Optional media attachment. The caregiver picks a file; it uploads to
+  // /api/messages/upload, which returns the URL we attach to the message.
   const [mediaUrl, setMediaUrl] = useState('')
   const [mediaType, setMediaType] = useState<'image' | 'video'>('image')
+  const [uploadingMedia, setUploadingMedia] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   // Messages
   const [messages, setMessages] = useState<ThreadMessage[]>([])
@@ -138,12 +142,22 @@ export default function PatientDashboardPage() {
       )
     }
 
+    // The patient's device confirmed it displayed a family message → flip the
+    // thread's "Sent" to "Seen ✓" in real time.
+    const onMessageRead = (envelope: ServerToClientMessage) => {
+      if (envelope.type !== 'MESSAGE_READ') return
+      const { id } = envelope.payload
+      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, isRead: true } : m)))
+    }
+
     socket.on('NEW_MESSAGE', onNewMessage)
     socket.on('NEW_REPLY', onNewReply)
+    socket.on('MESSAGE_READ', onMessageRead)
 
     return () => {
       socket.off('NEW_MESSAGE', onNewMessage)
       socket.off('NEW_REPLY', onNewReply)
+      socket.off('MESSAGE_READ', onMessageRead)
     }
   }, [socket, patientId])
 
@@ -156,6 +170,41 @@ export default function PatientDashboardPage() {
     (id: string | null | undefined) => (id ? personas.find((p) => p.id === id)?.name : undefined),
     [personas],
   )
+
+  // ── Upload a chosen photo/video, then hold its URL for the next send.
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadError(null)
+    setUploadingMedia(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/messages/upload', { method: 'POST', body: fd })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null
+        setUploadError(data?.error ?? 'Upload failed')
+        clearAttachment()
+        return
+      }
+      const data = (await res.json()) as { url: string; mediaType: 'image' | 'video' }
+      setMediaUrl(data.url)
+      setMediaType(data.mediaType)
+    } catch {
+      setUploadError('Upload failed — please try again')
+      clearAttachment()
+    } finally {
+      setUploadingMedia(false)
+    }
+  }
+
+  // Drop the pending attachment and reset the picker so the same file can be re-chosen.
+  function clearAttachment() {
+    setMediaUrl('')
+    setMediaType('image')
+    setUploadError(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
 
   // ── Send message (as the selected persona, or as the account)
   async function handleSend(e: React.FormEvent) {
@@ -181,8 +230,7 @@ export default function PatientDashboardPage() {
       } else {
         setContent('')
         setIsYesNo(false)
-        setMediaUrl('')
-        setMediaType('image')
+        clearAttachment()
         await fetchMessages()
       }
     } catch {
@@ -449,6 +497,7 @@ export default function PatientDashboardPage() {
                         reply={msg.reply}
                         repliedAt={msg.repliedAt}
                         fromPatient={fromPatient}
+                        isRead={msg.isRead}
                       />
                     </div>
                   </li>
@@ -505,27 +554,44 @@ export default function PatientDashboardPage() {
               />
               Ask as a Yes/No question
             </label>
-            <details className="text-sm">
+            <details className="text-sm" open={!!mediaUrl || uploadingMedia || !!uploadError}>
               <summary className="cursor-pointer text-ink-muted hover:text-ink">
-                Attach photo/video {mediaUrl.trim() && <span className="font-bold text-brand-deep">· 1 attached</span>}
+                Attach photo/video {mediaUrl && <span className="font-bold text-brand-deep">· 1 attached</span>}
               </summary>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-3">
                 <input
-                  type="url"
-                  value={mediaUrl}
-                  onChange={(e) => setMediaUrl(e.target.value)}
-                  placeholder="https://… image or video URL"
-                  className="w-72 rounded-[12px] border border-line-warm px-3 py-2 text-sm transition-all focus:bg-surface-warm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={handleFile}
+                  disabled={uploadingMedia}
+                  className="text-sm text-ink-muted file:mr-3 file:cursor-pointer file:rounded-[10px] file:border-0 file:bg-brand-soft file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-brand-deep hover:file:bg-brand-soft/70"
                 />
-                <select
-                  value={mediaType}
-                  onChange={(e) => setMediaType(e.target.value as 'image' | 'video')}
-                  className="rounded-[12px] border border-line-warm px-3 py-2 text-sm transition-all focus:ring-2 focus:ring-brand-primary"
-                >
-                  <option value="image">Photo</option>
-                  <option value="video">Video</option>
-                </select>
+                {uploadingMedia && <span className="text-ink-faint">Uploading…</span>}
+                {mediaUrl && !uploadingMedia && (
+                  <span className="flex items-center gap-2">
+                    {mediaType === 'video' ? (
+                      // eslint-disable-next-line jsx-a11y/media-has-caption
+                      <video src={mediaUrl} className="h-12 w-12 rounded-[8px] object-cover" muted />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={mediaUrl} alt="Attachment preview" className="h-12 w-12 rounded-[8px] object-cover" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={clearAttachment}
+                      className="text-sm font-bold text-error hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </span>
+                )}
               </div>
+              {uploadError && (
+                <p role="alert" className="mt-1.5 text-sm text-error">
+                  {uploadError}
+                </p>
+              )}
             </details>
             <span className="ml-auto text-xs text-ink-faint">{content.length}/1000</span>
           </div>

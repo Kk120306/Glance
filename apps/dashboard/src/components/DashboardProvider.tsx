@@ -20,6 +20,8 @@ export interface PatientSummary {
   deviceToken: string
   cameraOverrideActive: boolean
   createdAt: string
+  /** Family messages this patient hasn't seen yet (read receipt outstanding). */
+  unseenCount?: number
 }
 
 interface DashboardContextValue {
@@ -30,6 +32,10 @@ interface DashboardContextValue {
   familyMemberId: string | null
   /** Shared caregiver socket, registered to every associated patient's alerts room. */
   socket: Socket | null
+  /** patientId → count of family messages not yet seen by that patient (live). */
+  unseenByPatient: Record<string, number>
+  /** Total unseen family messages across every managed patient (live). */
+  totalUnseen: number
   /** Refetch the patient list and return the fresh array. */
   refreshPatients: () => Promise<PatientSummary[]>
   /** Optimistically update a patient's display name in the shared list. */
@@ -99,9 +105,15 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [onlineStatus, setOnlineStatus] = useState<Record<string, 'online' | 'offline'>>({})
   const [socket, setSocket] = useState<Socket | null>(null)
 
+  // Live per-patient unseen counts (seeded from the patient list, then nudged by
+  // socket events: +1 when a family message is sent, −1 when the patient reads it).
+  const [unseenByPatient, setUnseenByPatient] = useState<Record<string, number>>({})
+
   // Global alerts (fire regardless of which patient page is open).
   const [sosAlert, setSosAlert] = useState<{ patientId: string; timestamp: string } | null>(null)
   const [patientAlert, setPatientAlert] = useState<{ patientId: string; content: string } | null>(null)
+  // Auto-dismiss timer for the patient-request toast, so toasts never pile up.
+  const patientAlertTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Always-current patient id list for (re-)registration without re-creating the socket.
   const patientIdsRef = useRef<string[]>([])
@@ -113,6 +125,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         const data = (await res.json()) as PatientSummary[]
         setPatients(data)
         patientIdsRef.current = data.map((p) => p.id)
+        // Reset unseen counts to server truth (self-heals any socket drift).
+        setUnseenByPatient(Object.fromEntries(data.map((p) => [p.id, p.unseenCount ?? 0])))
         return data
       }
     } catch {
@@ -182,11 +196,29 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     s.on('NEW_MESSAGE', (envelope: ServerToClientMessage) => {
       if (envelope.type !== 'NEW_MESSAGE') return
       const msg = envelope.payload
-      // Only patient-initiated phrases are an "alert" — family-sent messages are
-      // not surfaced as a toast here.
-      if (!msg.senderPatientId) return
-      setPatientAlert({ patientId: msg.senderPatientId, content: msg.content })
-      playDoubleChime()
+      if (msg.senderPatientId) {
+        // Patient-initiated phrase → toast + chime, auto-dismissed after 8s.
+        setPatientAlert({ patientId: msg.senderPatientId, content: msg.content })
+        playDoubleChime()
+        if (patientAlertTimer.current) clearTimeout(patientAlertTimer.current)
+        patientAlertTimer.current = setTimeout(() => setPatientAlert(null), 8000)
+      } else {
+        // Family→patient message → still unseen until the patient's device reads it.
+        setUnseenByPatient((prev) => ({
+          ...prev,
+          [msg.recipientId]: (prev[msg.recipientId] ?? 0) + 1,
+        }))
+      }
+    })
+
+    s.on('MESSAGE_READ', (envelope: ServerToClientMessage) => {
+      if (envelope.type !== 'MESSAGE_READ') return
+      const { patientId } = envelope.payload
+      if (!patientId) return
+      setUnseenByPatient((prev) => ({
+        ...prev,
+        [patientId]: Math.max(0, (prev[patientId] ?? 0) - 1),
+      }))
     })
 
     setSocket(s)
@@ -194,6 +226,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     return () => {
       s.disconnect()
       setSocket(null)
+      if (patientAlertTimer.current) clearTimeout(patientAlertTimer.current)
     }
   }, [familyMemberId])
 
@@ -215,6 +248,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   const patientName = (id: string) => patients.find((p) => p.id === id)?.name ?? 'Patient'
 
+  const totalUnseen = Object.values(unseenByPatient).reduce((sum, n) => sum + n, 0)
+
   return (
     <DashboardContext.Provider
       value={{
@@ -223,6 +258,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         onlineStatus,
         familyMemberId,
         socket,
+        unseenByPatient,
+        totalUnseen,
         refreshPatients,
         updatePatientName,
         sosAlert,
@@ -247,7 +284,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
           </div>
           <button
             type="button"
-            onClick={() => setPatientAlert(null)}
+            onClick={() => {
+              if (patientAlertTimer.current) clearTimeout(patientAlertTimer.current)
+              setPatientAlert(null)
+            }}
             aria-label="Dismiss patient request"
             className="ml-2 text-ink-faint hover:text-ink"
           >

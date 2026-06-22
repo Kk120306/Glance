@@ -19,6 +19,7 @@ import { YesNoScreen } from './YesNoScreen'
 import { GazeTrackingPanel } from './GazeTrackingPanel'
 import { PhraseBoard, FIXED_PHRASES } from './PhraseBoard'
 import { PhraseConfirmScreen } from './PhraseConfirmScreen'
+import { QuickYesNo } from './QuickYesNo'
 import { BlobAgent, type BlobTone } from './BlobAgent'
 import { DwellRing } from './DwellRing'
 import { CalibrationScreen } from './CalibrationScreen'
@@ -44,6 +45,8 @@ interface CurrentMessage {
   toneClass: string
   mediaUrl?: string | null
   mediaType?: string | null
+  /** Who the message is from (persona name, else the family member's name). */
+  senderName?: string | null
 }
 
 /** Map a message's stored tone class to a Blob expression (defaults to neutral). */
@@ -73,6 +76,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
   const [micDenied, setMicDenied] = useState(false)
   const [showGazePanel, setShowGazePanel] = useState(false)
   const [showPhraseBoard, setShowPhraseBoard] = useState(false)
+  const [showQuickYesNo, setShowQuickYesNo] = useState(false)
   const [showCalibration, setShowCalibration] = useState(false)
   // A phrase the patient selected and is now confirming before it sends (AI
   // Content Gate: nothing sends without an explicit confirm).
@@ -161,6 +165,29 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
     }
   }, [dashboardUrl, deviceToken])
 
+  // ── Pull any messages that arrived while the device was closed, offline, or
+  // off-camera and enqueue the ones we don't already have. Runs on session start
+  // and on every socket (re)connect, so a message sent during a gap is read aloud
+  // once the device comes back rather than silently dropped. Marking a message
+  // read (when it reaches the screen) removes it from future pending fetches.
+  const fetchPending = useCallback(async () => {
+    try {
+      const res = await fetch(`${dashboardUrl}/api/messages/pending`, {
+        headers: { 'x-device-token': deviceToken },
+      })
+      if (!res.ok) return
+      const pending = (await res.json()) as CurrentMessage[]
+      if (!Array.isArray(pending) || pending.length === 0) return
+      setMessageQueue((q) => {
+        const have = new Set(q.map((m) => m.id))
+        const fresh = pending.filter((m) => !have.has(m.id))
+        return fresh.length === 0 ? q : [...q, ...fresh]
+      })
+    } catch {
+      // best-effort: live socket delivery still covers the common case
+    }
+  }, [dashboardUrl, deviceToken])
+
   // ── Microphone SOS listener (runs independently of camera)
   const startMicListener = useCallback(() => {
     const ctx = audioCtxRef.current
@@ -242,6 +269,21 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
     [dashboardUrl, deviceToken, speakLocal],
   )
 
+  // ── Mark an on-screen caregiver message as seen, so the dashboard flips its
+  // "Sent" receipt to "Seen ✓". Fire-and-forget: a failed receipt never affects
+  // the patient (the message is already on screen and read aloud).
+  const markRead = useCallback(
+    (messageId: string) => {
+      void fetch(`${dashboardUrl}/api/messages/${messageId}/read`, {
+        method: 'PATCH',
+        headers: { 'x-device-token': deviceToken },
+      }).catch(() => {
+        /* best-effort receipt */
+      })
+    },
+    [dashboardUrl, deviceToken],
+  )
+
   // ── Fetch LLM-ranked reply suggestions for an incoming message. The patient's
   // own frozen phrase list is sent and merely reordered server-side, so only
   // curated phrases can ever come back (AI Content Gate). Best-effort: on any
@@ -291,7 +333,9 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
     setRankedSuggestions(null)
     if (!currentMessage.isYesNo) void fetchSuggestions(currentMessage.content)
     void playTTS(currentMessage.id, currentMessage.content)
-  }, [currentMessage, fetchSuggestions, playTTS])
+    // The message is now on screen and read aloud → tell the dashboard it was seen.
+    markRead(currentMessage.id)
+  }, [currentMessage, fetchSuggestions, playTTS, markRead])
 
   // ── SOS dispatch
   const triggerSOS = useCallback(async () => {
@@ -376,19 +420,22 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
 
       socket.on('connect', () => {
         socket.emit('message', JSON.stringify({ type: 'REGISTER', role: 'patient', patientId }))
+        // Replay anything missed while the device was disconnected.
+        void fetchPending()
       })
 
       socket.on('reconnect', () => {
         socket.emit('message', JSON.stringify({ type: 'REGISTER', role: 'patient', patientId }))
+        void fetchPending()
       })
 
       socket.on('NEW_MESSAGE', (envelope: ServerToClientMessage) => {
         if (envelope.type !== 'NEW_MESSAGE') return
-        const { id, content, isYesNo, toneClass, mediaUrl, mediaType } = envelope.payload
+        const { id, content, isYesNo, toneClass, mediaUrl, mediaType, senderName } = envelope.payload
         // Queue it — never overwrite a message the patient is still reading. The
         // head-of-queue effect handles TTS + suggestions once it reaches screen.
         setMessageQueue((q) =>
-          q.some((m) => m.id === id) ? q : [...q, { id, content, isYesNo, toneClass, mediaUrl, mediaType }],
+          q.some((m) => m.id === id) ? q : [...q, { id, content, isYesNo, toneClass, mediaUrl, mediaType, senderName }],
         )
       })
 
@@ -403,7 +450,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
         socketRef.current = null
       }
     },
-    [wsServerUrl],
+    [wsServerUrl, fetchPending],
   )
 
   // ── Start everything after activation
@@ -432,11 +479,13 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
     if (!activated || !patientConfig) return
     const cleanupSocket = connectSocket(patientConfig.id)
     startMicListener()
+    // Load anything missed while away immediately, independent of socket timing.
+    void fetchPending()
     return () => {
       cleanupSocket()
       micCleanupRef.current?.()
     }
-  }, [activated, patientConfig, connectSocket, startMicListener])
+  }, [activated, patientConfig, connectSocket, startMicListener, fetchPending])
 
   // ── Start Session (audio unlock)
   if (!activated) {
@@ -555,6 +604,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
         {currentMessage?.isYesNo ? (
           <YesNoScreen
             question={currentMessage.content}
+            senderName={currentMessage.senderName}
             messageId={currentMessage.id}
             dashboardUrl={dashboardUrl}
             deviceToken={deviceToken}
@@ -563,6 +613,15 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
         ) : currentMessage ? (
           /* ── Read-message layout ── */
           <div className="relative z-[2] flex flex-1 flex-col items-center justify-center px-11 pb-6">
+            {currentMessage.senderName && (
+              <div
+                className="mb-4 flex items-center gap-2.5 rounded-full bg-white px-5 py-2.5 font-bold"
+                style={{ boxShadow: '0 1px 3px rgba(36,30,43,.06)', color: colors.brand.deep, fontSize: 16 }}
+              >
+                <span aria-hidden style={{ fontSize: 18 }}>💌</span>
+                From {currentMessage.senderName}
+              </div>
+            )}
             <BlobAgent tone={toBlobTone(currentMessage.toneClass)} speaking={speaking} size={currentMessage.mediaUrl ? '120px' : '184px'} float={false} className="mb-5" />
             {currentMessage.mediaUrl && (
               <div className="mb-6 flex justify-center">
@@ -639,7 +698,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
               <HomeTile id="home:messages" icon="✉️" iconBg="#EFE9FF" title="Messages"
                 subtitle="Replies & suggestions" onSelect={() => setShowPhraseBoard(true)} />
               <HomeTile id="home:yesno" icon="⚖️" iconBg="#FBE6F2" title="Yes / No"
-                subtitle="Answer quickly" onSelect={() => setShowPhraseBoard(true)} />
+                subtitle="Answer quickly" onSelect={() => setShowQuickYesNo(true)} />
               <HomeTile id="home:help" icon="🙋" iconBg="#FFF1DF" title="I need help"
                 subtitle="Call a caregiver" onSelect={() => void triggerSOS()} />
             </div>
@@ -668,6 +727,18 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
             onPhrase={selectPhrase}
             onClose={() => setShowPhraseBoard(false)}
             rankedSuggestions={rankedSuggestions ?? undefined}
+          />
+        )}
+
+        {/* Quick Yes/No — two large targets from the home tile. Selection routes
+            through the same confirm gate (PhraseConfirmScreen) before sending. */}
+        {showQuickYesNo && (
+          <QuickYesNo
+            onPhrase={(p) => {
+              setShowQuickYesNo(false)
+              selectPhrase(p)
+            }}
+            onClose={() => setShowQuickYesNo(false)}
           />
         )}
 

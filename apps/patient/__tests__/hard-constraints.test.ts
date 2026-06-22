@@ -34,7 +34,7 @@ describe('Hard Constraint #1 — Zero Hands', () => {
   const interactiveComponents = [
     'components/PhraseBoard.tsx',
     'components/PatientScreen.tsx',
-    'components/SpeakButton.tsx',
+    'components/QuickYesNo.tsx',
     'components/YesNoScreen.tsx',
     'components/PhraseConfirmScreen.tsx',
   ]

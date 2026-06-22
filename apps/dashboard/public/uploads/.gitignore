@@ -1,0 +1,4 @@
+# Caregiver-uploaded message media is written here at runtime by
+# POST /api/messages/upload. Keep the directory in git, ignore its contents.
+*
+!.gitignore

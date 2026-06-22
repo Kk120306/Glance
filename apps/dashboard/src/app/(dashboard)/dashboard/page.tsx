@@ -10,7 +10,7 @@ import { AddPatientModal } from '@/components/AddPatientModal'
 
 export default function DashboardOverviewPage() {
   const { data: session } = useSession()
-  const { patients, patientsLoading, onlineStatus, sosAlert, setSosAlert, refreshPatients } = useDashboard()
+  const { patients, patientsLoading, onlineStatus, unseenByPatient, totalUnseen, sosAlert, setSosAlert, refreshPatients } = useDashboard()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [filterMode, setFilterMode] = useState<'all' | 'needs-attention'>('all')
@@ -135,7 +135,7 @@ export default function DashboardOverviewPage() {
       {/* Stats Row */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <StatCard label="Messages today" value={stats?.messagesToday ?? '—'} />
-        <StatCard label="Avg. gaze accuracy" value="—" />
+        <StatCard label="Unseen messages" value={totalUnseen} valueColor={totalUnseen > 0 ? '#C62A2F' : undefined} />
         <StatCard label="Help requests" value={stats?.helpRequestsToday ?? '—'} />
         <StatCard label="Avg. response" value="—" />
       </div>
@@ -199,6 +199,7 @@ export default function DashboardOverviewPage() {
               deviceToken={patient.deviceToken}
               isOnline={onlineStatus[patient.id] === 'online'}
               isSOS={sosAlert?.patientId === patient.id}
+              unseenCount={unseenByPatient[patient.id] ?? 0}
             />
           ))}
         </div>

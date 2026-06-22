@@ -55,15 +55,18 @@ export async function POST(req: NextRequest) {
   }
 
   // If sending AS a persona, it must belong to the signed-in account (prevents
-  // borrowing another account's voice).
+  // borrowing another account's voice). Capture its name so the patient device
+  // can attribute the message to the persona, not the underlying account.
+  let personaName: string | null = null
   if (parsed.data.personaId) {
     const [persona] = await db
-      .select({ id: personas.id })
+      .select({ id: personas.id, name: personas.name })
       .from(personas)
       .where(and(eq(personas.id, parsed.data.personaId), eq(personas.familyMemberId, familyMember.id)))
     if (!persona) {
       return NextResponse.json({ error: 'Persona not found' }, { status: 403 })
     }
+    personaName = persona.name
   }
 
   const toneClass = await classifyTone(parsed.data.content)
@@ -86,11 +89,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create message' }, { status: 500 })
   }
 
+  const senderName = personaName ?? familyMember.name
+
   const wsServerUrl = process.env.WS_SERVER_URL
   if (wsServerUrl) {
     const emitBody: EmitRequest = {
+      // Deliver to the patient device room AND the caregiver alerts room, so a
+      // second caregiver viewing the same thread sees the message arrive live
+      // (not only the patient and the sender's own optimistic refresh).
       targetPatientId: patient.id,
-      event: { type: 'NEW_MESSAGE', payload: message },
+      targetPatientAlerts: patient.id,
+      event: { type: 'NEW_MESSAGE', payload: { ...message, senderName } },
     }
     try {
       await fetch(`${wsServerUrl}/emit`, {

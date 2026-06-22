@@ -9,6 +9,11 @@ interface MessageBubbleProps {
   repliedAt?: Date | string | null
   /** Marks a patient-initiated message (e.g. a fixed-phrase request). */
   fromPatient?: boolean
+  /**
+   * Read receipt for a family-sent message: `true` once the patient's device has
+   * displayed/read it aloud. Ignored for patient-initiated messages.
+   */
+  isRead?: boolean
   className?: string
 }
 
@@ -27,6 +32,7 @@ export function MessageBubble({
   reply,
   repliedAt,
   fromPatient,
+  isRead,
   className = '',
 }: MessageBubbleProps) {
   const ts = typeof timestamp === 'string' ? new Date(timestamp) : timestamp
@@ -74,6 +80,14 @@ export function MessageBubble({
           </time>
         </div>
         <p className="font-serif text-lg leading-snug text-ink">{content}</p>
+        {!fromPatient && (
+          <span
+            className={`self-start text-xs font-bold ${isRead ? '' : 'text-ink-faint'}`}
+            style={isRead ? { color: '#0B6F63' } : undefined}
+          >
+            {isRead ? 'Seen ✓' : 'Sent'}
+          </span>
+        )}
         {reply && (
           <div className="mt-1 flex items-center gap-2">
             <span
