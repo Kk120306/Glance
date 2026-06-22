@@ -32,22 +32,34 @@ describe('GET /api/stats — caregiver-scoped counts', () => {
     expect(mocks.dbCalls.select).toBe(0)
   })
 
-  it('returns today’s scoped message + help-request counts', async () => {
+  it('returns today’s scoped message + help-request counts and avg response', async () => {
     mocks.getSession.mockResolvedValue(fakeSession)
     mocks.getFamilyMemberFromSession.mockResolvedValue(fakeFamilyMember)
     mocks.queueResult([{ value: 12 }]) // messages sent today
     mocks.queueResult([{ value: 3 }]) // help requests today
+    mocks.queueResult([{ avgSeconds: '90' }]) // avg yes/no response (seconds, pg numeric → string)
     const res = await getStats()
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ messagesToday: 12, helpRequestsToday: 3 })
-    expect(mocks.dbCalls.select).toBe(2)
+    expect(await res.json()).toEqual({ messagesToday: 12, helpRequestsToday: 3, avgResponseSeconds: 90 })
+    expect(mocks.dbCalls.select).toBe(3)
   })
 
-  it('defaults to zero when the counts return no rows', async () => {
+  it('reports a null avg response when no yes/no question was answered today', async () => {
+    mocks.getSession.mockResolvedValue(fakeSession)
+    mocks.getFamilyMemberFromSession.mockResolvedValue(fakeFamilyMember)
+    mocks.queueResult([{ value: 5 }]) // messages sent today
+    mocks.queueResult([{ value: 0 }]) // help requests today
+    mocks.queueResult([{ avgSeconds: null }]) // no answered questions → avg is null
+    const res = await getStats()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ messagesToday: 5, helpRequestsToday: 0, avgResponseSeconds: null })
+  })
+
+  it('defaults to zero/null when the queries return no rows', async () => {
     mocks.getSession.mockResolvedValue(fakeSession)
     mocks.getFamilyMemberFromSession.mockResolvedValue(fakeFamilyMember)
     const res = await getStats()
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ messagesToday: 0, helpRequestsToday: 0 })
+    expect(await res.json()).toEqual({ messagesToday: 0, helpRequestsToday: 0, avgResponseSeconds: null })
   })
 })

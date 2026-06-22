@@ -8,6 +8,16 @@ import { SOSBanner } from '@/components/SOSBanner'
 import { PatientCard } from '@/components/PatientCard'
 import { AddPatientModal } from '@/components/AddPatientModal'
 
+// Render a response time (in seconds) as a compact, human-readable duration.
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) {
+    const minutes = seconds / 60
+    return minutes < 10 ? `${minutes.toFixed(1)}m` : `${Math.round(minutes)}m`
+  }
+  return `${(seconds / 3600).toFixed(1)}h`
+}
+
 export default function DashboardOverviewPage() {
   const { data: session } = useSession()
   const { patients, patientsLoading, onlineStatus, unseenByPatient, totalUnseen, sosAlert, setSosAlert, refreshPatients } = useDashboard()
@@ -16,9 +26,13 @@ export default function DashboardOverviewPage() {
   const [filterMode, setFilterMode] = useState<'all' | 'needs-attention'>('all')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
 
-  // Headline counts (scoped to this caregiver's patients). Null until loaded;
-  // gaze/response metrics are not yet instrumented and render as placeholders.
-  const [stats, setStats] = useState<{ messagesToday: number; helpRequestsToday: number } | null>(null)
+  // Headline counts (scoped to this caregiver's patients). Null until loaded.
+  // avgResponseSeconds is null when no yes/no question was answered today.
+  const [stats, setStats] = useState<{
+    messagesToday: number
+    helpRequestsToday: number
+    avgResponseSeconds: number | null
+  } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -26,7 +40,13 @@ export default function DashboardOverviewPage() {
       try {
         const res = await fetch('/api/stats')
         if (res.ok && !cancelled) {
-          setStats((await res.json()) as { messagesToday: number; helpRequestsToday: number })
+          setStats(
+            (await res.json()) as {
+              messagesToday: number
+              helpRequestsToday: number
+              avgResponseSeconds: number | null
+            },
+          )
         }
       } catch {
         // best-effort: leave placeholders on failure
@@ -137,7 +157,10 @@ export default function DashboardOverviewPage() {
         <StatCard label="Messages today" value={stats?.messagesToday ?? '—'} />
         <StatCard label="Unseen messages" value={totalUnseen} valueColor={totalUnseen > 0 ? '#C62A2F' : undefined} />
         <StatCard label="Help requests" value={stats?.helpRequestsToday ?? '—'} />
-        <StatCard label="Avg. response" value="—" />
+        <StatCard
+          label="Avg. response"
+          value={stats?.avgResponseSeconds != null ? formatDuration(stats.avgResponseSeconds) : '—'}
+        />
       </div>
 
       {/* Section Header with filters */}

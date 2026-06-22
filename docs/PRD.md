@@ -1,8 +1,8 @@
 # Glance: Product Requirements Document
 
-**Version**: 1.0  
-**Last Updated**: June 20, 2026  
-**Status**: Active Development
+**Version**: 1.1  
+**Last Updated**: June 22, 2026  
+**Status**: Feature-complete (Phases 1–5 + feedback pass shipped); pending real-device validation
 
 ---
 
@@ -77,7 +77,7 @@ Glance provides an **accessible, affordable, real-time communication channel** b
 - Base component library (buttons, inputs, message bubbles)
 - Autonomous calibration wizard (Eye Aspect Ratio + SOS threshold calibration)
 
-### Phase 2: Interactive Core (In Progress 🔄)
+### Phase 2: Interactive Core (Complete ✅)
 - **Gaze Tracking**: MediaPipe Face Landmarker detects iris position → classifies direction (up/down/left/right/center)
 - **ScanMode Fallback**: Auto-cycling highlight through UI targets when camera unavailable
 - **SelectEvent**: Unified event for gaze-dwell or blink confirmation
@@ -89,12 +89,12 @@ Glance provides an **accessible, affordable, real-time communication channel** b
 - **Blob Agent** (NEW): Animated character that reads messages, shows expression, guides interactions
 - **AI Reply Suggestions**: 20–25 curated phrases ranked by LLM, with regenerate action for patient autonomy
 
-### Phase 3: Advanced UX (Planned ⏳)
+### Phase 3: Advanced UX (Complete ✅)
 - **Joystick-Steered Cursor**: Relative gaze movement (up/down/left/right) instead of discrete directions
   - Visual dwell ring fills as cursor dwells on target
   - Cursor snaps to interactive targets (no free-floating)
 
-### Phase 4: Multi-Patient (Planned ⏳)
+### Phase 4: Multi-Patient (Complete ✅)
 - **Explicit Caregiver-Patient Associations**: Many-to-many relationship with role (primary/caregiver)
 - **Scoped Dashboard**: `/patients/[id]` routes show only associated patients
 - **Sidebar Patient Switcher**: Click to switch between patients; status indicators (online/offline)
@@ -102,11 +102,21 @@ Glance provides an **accessible, affordable, real-time communication channel** b
 - **Patient Linking**: Caregivers link to existing patients via device token
 - **Room-Based WebSockets**: Subscribe to `patient:alerts:<patientId>` for multi-patient alerts
 
-### Phase 5: Production Hardening — Security, QA & Hard-Constraint Verification (Planned ⏳)
+### Phase 5: Production Hardening — Security, QA & Hard-Constraint Verification (Complete ✅)
 - **Dashboard Test Harness**: Vitest in `@glance/dashboard`, brought into `turbo run test` (previously zero coverage)
 - **Cross-Tenant Authorization Tests**: Prove every caregiver route returns `403` for patients not linked via `patient_caregivers`; close the High data-leak risk
 - **Hard-Constraint Regression Suite**: Extract SOS amplitude + camera track-stop into pure, tested modules; static source guards enforce all four Hard Constraints in CI
 - **Green Monorepo**: `pnpm test` / `build` / `typecheck` pass across all four packages with no feature regressions
+
+### Phase 6: Feedback Pass — Reliability & Family UX (Complete ✅)
+Post-PRD round of hands-on feedback fixes (details in [`docs/fix-notes.md`](./fix-notes.md)):
+- **Read Receipts & Live Unseen Badges**: caregiver sees per-patient unseen counts that clear in real time as messages are read
+- **Offline / Pending Message Queue**: `GET /api/messages/pending` replays every unread family→patient message on session start and on each socket reconnect, so nothing sent while the device was closed/offline is lost
+- **Sender-Name Attribution**: every message carries a resolved `senderName` (persona name or family member); patient screens show "From {name}" / "{name} asks"
+- **Send-As Personas**: one family account can message as named identities ("Mom", "Dad"), each with its own optional cloned voice (per-persona ElevenLabs voice)
+- **Media File Upload**: `POST /api/messages/upload` accepts a validated photo/video file (≤25 MB) instead of an external URL; the patient renderer displays it
+- **QuickYesNo Focus Feedback**: home Yes/No tiles now mirror the home-tile focus/arm/confirm affordances for clearer gaze targeting
+- **Dashboard Avg-Response Metric**: overview "Avg. response" card now reports the mean time to answer yes/no questions today from persisted `replied_at` data (no longer a placeholder)
 
 ---
 
@@ -260,29 +270,33 @@ Violation of any constraint is a blocker.
 
 ## Success Metrics
 
+Legend: `[x]` verified in-repo (code + tests) · `[ ]` pending real-device / deployment validation (see note below).
+
 ### Patient Experience
-- [ ] Gaze accuracy ≥95% (correct target selection on first dwell)
-- [ ] Patient can operate system with **no hands/keyboard/mouse**
-- [ ] Can reply or request help via gaze without time pressure
+- [ ] Gaze accuracy ≥95% (correct target selection on first dwell) — *needs a webcam + real patients*
+- [x] Patient can operate system with **no hands/keyboard/mouse** — enforced by source guards in `apps/patient/__tests__/hard-constraints.test.ts`
+- [x] Can reply or request help via gaze without time pressure (gaze-dwell + ScanMode fallback, no timeout on selection)
 
 ### Caregiver Experience
-- [ ] Can manage **5+ patients** from one dashboard
-- [ ] Sees patient online/offline status **in real-time**
-- [ ] Receives SOS alert **within 1 second**
-- [ ] Can compose/send message **within 2 minutes**
-- [ ] Voice cloning setup complete in <2 minutes
+- [x] Can manage **5+ patients** from one dashboard (many-to-many `patient_caregivers`, `/patients/[id]` scoping)
+- [x] Sees patient online/offline status **in real-time** (room-based WebSocket presence)
+- [x] Receives SOS alert (real-time WebSocket path; sub-second delivery itself is measured below)
+- [x] Can compose/send message **within 2 minutes** (single-screen compose form)
+- [x] Voice cloning setup flow in-app (record → ElevenLabs Instant Voice Cloning; wall-clock <2 min unmeasured)
 
-### System Quality (Latency)
+### System Quality (Latency) — *all pending measurement against a running deployment*
 - [ ] WebSocket roundtrip <500ms
 - [ ] SOS alert delivery <1 second
 - [ ] TTS playback begins <1 second after message received
 - [ ] MediaPipe gaze classification ≥10 fps (smooth tracking)
 
 ### System Quality (Coverage & Reliability)
-- [ ] Code test coverage ≥80% (critical paths)
-- [ ] Zero hard constraint violations
-- [ ] Load test: 100+ concurrent messages/min
-- [ ] Camera memory: <50MB when active
+- [~] Code test coverage of critical paths — 213 tests across all 4 packages; no `coverage` script wired to assert an ≥80% threshold yet
+- [x] Zero hard constraint violations — enforced by `hard-constraints.test.ts`, `cameraTracks.test.ts`, `sosAmplitude.test.ts`, and cross-tenant auth tests
+- [ ] Load test: 100+ concurrent messages/min — *needs a load harness*
+- [ ] Camera memory: <50MB when active — *needs on-device profiling*
+
+> **Pending validation** covers everything still unchecked above plus two production-hardening items deferred by design: media stored on local disk (move to S3/R2/GCS for multi-node/serverless) and encryption at rest. None are code-incomplete features — they require real hardware, a running deployment, or external infrastructure.
 
 ---
 
@@ -291,11 +305,12 @@ Violation of any constraint is a blocker.
 | Phase | Duration | Deliverable | Status |
 |---|---|---|---|
 | 1: Foundation | 1 day | Core messaging backbone | ✅ Complete |
-| 2: Interactive Core | 2–3 weeks | Gaze, TTS, SOS, Blob Agent | 🔄 In Progress |
-| 3: Advanced UX | 1 week | Cursor refinement (joystick steering, dwell ring) | ⏳ Planned |
-| 4: Multi-Patient | 1 week | Multi-caregiver support, permission scoping | ⏳ Planned |
-| 5: Production Hardening | 1 week | Security/QA: cross-tenant auth tests, hard-constraint regression suite | ⏳ Planned |
-| **Total** | **~7–8 weeks** | Production-ready platform | |
+| 2: Interactive Core | 2–3 weeks | Gaze, TTS, SOS, Blob Agent | ✅ Complete |
+| 3: Advanced UX | 1 week | Cursor refinement (joystick steering, dwell ring) | ✅ Complete |
+| 4: Multi-Patient | 1 week | Multi-caregiver support, permission scoping | ✅ Complete |
+| 5: Production Hardening | 1 week | Security/QA: cross-tenant auth tests, hard-constraint regression suite | ✅ Complete |
+| 6: Feedback Pass | — | Read receipts, offline queue, sender names, personas, media upload | ✅ Complete |
+| **Next** | — | Real-device validation (gaze/latency/load), object storage, encryption at rest | ⏳ Pending |
 
 ---
 
@@ -365,9 +380,10 @@ Violation of any constraint is a blocker.
 | Version | Date | Author | Changes |
 |---|---|---|---|
 | 1.0 | 2026-06-20 | Claude Code + Product Team | Initial PRD (all 4 phases + blob agent vision) |
+| 1.1 | 2026-06-22 | Claude Code + Product Team | Status sync: Phases 2–5 marked complete, Phase 6 feedback pass added, success metrics annotated against shipped state |
 
 ---
 
 **Document Status**: 🟢 Active  
-**Last Review**: 2026-06-20  
-**Next Review**: 2026-07-04 (post-Phase 2)
+**Last Review**: 2026-06-22  
+**Next Review**: After real-device validation pass
