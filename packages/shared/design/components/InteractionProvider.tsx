@@ -5,9 +5,12 @@ import React, {
   useContext,
   useRef,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useState,
 } from 'react'
+import { isFocusValid, resolveDefaultFocusId, clampScanIndex } from './focusFallback'
+import { isStepHoldBlocked, resolveStepLatch } from './gazeStepLatch'
 
 export type GazeDirection = 'up' | 'down' | 'left' | 'right' | 'center'
 
@@ -18,6 +21,9 @@ export interface InteractiveTarget {
   /** Reserved hint for direction-mapped layouts; the default gaze navigation
    *  steps through targets in reading order regardless of this value. */
   gazeDirection?: GazeDirection
+  /** When set, gaze steps only move among targets sharing this group (e.g.
+   *  home tiles use 'home' while SOS stays outside the row). */
+  gazeGroup?: string
 }
 
 interface InteractionContextValue {
@@ -93,8 +99,10 @@ interface InteractionProviderProps {
  * away to another target before the second blink cancels the arm. This removes
  * the edge-drift and pointing-accuracy problems of a free dwell cursor.
  *
- * Scan mode (the fallback when no camera/face is available) is unchanged: a
- * highlight auto-cycles on a timer and a single blink (or Space) selects.
+ * Scan mode (the fallback when no camera/face is available) auto-cycles a
+ * highlight on a timer. Like gaze mode, a first blink arms the highlighted
+ * target and a confirming second blink fires it. Moving the highlight cancels
+ * a pending arm.
  */
 export function InteractionProvider({
   mode,
@@ -116,7 +124,7 @@ export function InteractionProvider({
   const focusedIdRef = useRef<string | null>(null)
   const armedIdRef = useRef<string | null>(null)
   const prevBlinkSignalRef = useRef(0)
-  const stepLatchedRef = useRef(false)
+  const latchedDirRef = useRef<GazeDirection | null>(null)
   const stepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const setFocus = useCallback((id: string | null) => {
@@ -137,10 +145,8 @@ export function InteractionProvider({
     }
   }, [])
 
-  // Targets in reading order (top-to-bottom, then left-to-right) by live rect —
-  // the order gaze steps through.
-  const orderedTargets = useCallback((): InteractiveTarget[] => {
-    return [...targetsRef.current].sort((a, b) => {
+  const sortByReadingOrder = (targets: InteractiveTarget[]): InteractiveTarget[] => {
+    return [...targets].sort((a, b) => {
       const ra = a.ref.current?.getBoundingClientRect()
       const rb = b.ref.current?.getBoundingClientRect()
       if (!ra || !rb) return 0
@@ -149,18 +155,86 @@ export function InteractionProvider({
       if (rowA !== rowB) return rowA - rowB
       return ra.left - rb.left
     })
+  }
+
+  // Targets in reading order (top-to-bottom, then left-to-right) by live rect —
+  // the order gaze steps through. When the focused target belongs to a gaze
+  // group, steps stay within that group (home tiles exclude SOS).
+  const orderedTargets = useCallback((): InteractiveTarget[] => {
+    const all = targetsRef.current
+    const focused = focusedIdRef.current
+    const focusedTarget = focused ? all.find(t => t.id === focused) : null
+
+    let pool: InteractiveTarget[]
+    if (focusedTarget?.gazeGroup != null) {
+      pool = all.filter(t => t.gazeGroup === focusedTarget.gazeGroup)
+    } else if (focused == null) {
+      const grouped = all.filter(t => t.gazeGroup != null)
+      pool = grouped.length > 0 ? grouped : all
+    } else {
+      pool = all
+    }
+    return sortByReadingOrder(pool)
   }, [])
 
-  // ── Screen change (or entering gaze mode) → focus the first target and drop
-  // any pending arm, so every new screen starts from a predictable neutral.
-  useEffect(() => {
-    if (mode !== 'gaze' || paused) return
-    setFocus(orderedTargets()[0]?.id ?? null)
-    setArmed(null)
-    stepLatchedRef.current = false
-  }, [mode, paused, targetsVersion, orderedTargets, setFocus, setArmed])
+  // Ensure a valid highlight whenever targets exist and input is active. On
+  // screen transitions (forceFirst) always re-seed to the first reading-order
+  // target; otherwise only fill null/orphan gaps so gaze stepping is preserved.
+  const ensureFocus = useCallback(
+    (opts?: { forceFirst?: boolean }) => {
+      const ordered = orderedTargets()
+      const orderedIds = ordered.map(t => t.id)
+      const allIds = targetsRef.current.map(t => t.id)
+      const nextId = resolveDefaultFocusId(focusedIdRef.current, orderedIds, opts)
 
-  // ── Scan mode: auto-cycle the highlight on an interval.
+      if (nextId == null) {
+        if (focusedIdRef.current != null) setFocus(null)
+        return
+      }
+
+      const needsUpdate =
+        opts?.forceFirst ||
+        !isFocusValid(focusedIdRef.current, allIds) ||
+        focusedIdRef.current !== nextId
+
+      if (!needsUpdate) return
+
+      setFocus(nextId)
+      setArmed(null)
+      latchedDirRef.current = null
+
+      if (mode === 'scan') {
+        const idx = ordered.findIndex(t => t.id === nextId)
+        setFocusedIndex(idx >= 0 ? idx : 0)
+      }
+    },
+    [mode, orderedTargets, setFocus, setArmed],
+  )
+
+  // Screen change or mode switch → focus the first target in both gaze and scan.
+  useEffect(() => {
+    if (paused) return
+    ensureFocus({ forceFirst: true })
+  }, [mode, paused, targetsVersion, ensureFocus])
+
+  // Retry once after layout when registration races leave focus null/orphaned.
+  useLayoutEffect(() => {
+    if (paused) return
+    const allIds = targetsRef.current.map(t => t.id)
+    if (allIds.length === 0 || isFocusValid(focusedIdRef.current, allIds)) return
+
+    ensureFocus()
+
+    const frame = requestAnimationFrame(() => {
+      const ids = targetsRef.current.map(t => t.id)
+      if (ids.length > 0 && !isFocusValid(focusedIdRef.current, ids)) {
+        ensureFocus()
+      }
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [paused, targetsVersion, ensureFocus])
+
+  // ── Scan mode: auto-cycle the highlight on an interval (reading order).
   useEffect(() => {
     if (mode !== 'scan' || paused) {
       setFocusedIndex(0)
@@ -168,19 +242,29 @@ export function InteractionProvider({
     }
     const interval = setInterval(() => {
       setFocusedIndex(prev => {
-        const count = targetsRef.current.length
+        const count = orderedTargets().length
         return count === 0 ? 0 : (prev + 1) % count
       })
     }, scanCycleMs)
     return () => clearInterval(interval)
-  }, [mode, scanCycleMs, paused])
+  }, [mode, scanCycleMs, paused, orderedTargets, targetsVersion])
 
-  // Scan mode: reflect the cycling index into the focused target id.
+  // Scan mode: reflect the cycling index into the focused target id. Moving the
+  // highlight cancels a pending confirm — same rule as gaze focus stepping.
   useEffect(() => {
     if (mode === 'scan' && !paused) {
-      setFocus(targetsRef.current[focusedIndex]?.id ?? null)
+      const ordered = orderedTargets()
+      const safeIndex = clampScanIndex(focusedIndex, ordered.length)
+      if (safeIndex !== focusedIndex) setFocusedIndex(safeIndex)
+      setFocus(ordered[safeIndex]?.id ?? null)
+      setArmed(null)
     }
-  }, [mode, focusedIndex, paused, setFocus])
+  }, [mode, focusedIndex, paused, orderedTargets, setFocus, setArmed])
+
+  // Mode switch → drop any pending arm so gaze/scan never inherit each other's state.
+  useEffect(() => {
+    setArmed(null)
+  }, [mode, setArmed])
 
   // Paused → clear all focus/arm so nothing is highlighted behind an overlay.
   useEffect(() => {
@@ -193,9 +277,9 @@ export function InteractionProvider({
   // Step the focus one target earlier ('prev') or later ('next') in reading
   // order. Clamped at the ends (no wrap) so looking past the edge is a no-op
   // rather than a surprising jump — directly fixing the old edge-drift problem.
-  const stepFocus = useCallback((screenDir: 'prev' | 'next') => {
+  const stepFocus = useCallback((screenDir: 'prev' | 'next'): boolean => {
     const ordered = orderedTargets()
-    if (ordered.length === 0) return
+    if (ordered.length === 0) return false
     const curIdx = ordered.findIndex(t => t.id === focusedIdRef.current)
     const base = curIdx < 0 ? 0 : curIdx
     const nextIdx = clamp(base + (screenDir === 'next' ? 1 : -1), 0, ordered.length - 1)
@@ -203,11 +287,14 @@ export function InteractionProvider({
     if (nextId !== focusedIdRef.current) {
       setFocus(nextId)
       setArmed(null) // moving focus cancels a pending confirm
+      return true
     }
+    return false
   }, [orderedTargets, setFocus, setArmed])
 
-  // ── Gaze mode: a sustained look steps focus once, then latches until the eyes
-  // return to center (so holding a look never runs focus away).
+  // ── Gaze mode: a sustained look steps focus once per direction hold. The latch
+  // clears on center or when the patient switches direction so they can chain
+  // steps without a perfect neutral gaze between tiles.
   useEffect(() => {
     if (mode !== 'gaze' || paused) return
     const dir = gazeDirection ?? 'center'
@@ -215,16 +302,14 @@ export function InteractionProvider({
       clearTimeout(stepTimerRef.current)
       stepTimerRef.current = null
     }
-    if (dir === 'center') {
-      stepLatchedRef.current = false // re-arm the stepper for the next look
-      return
-    }
-    if (stepLatchedRef.current) return // already stepped this hold
+    latchedDirRef.current = resolveStepLatch(latchedDirRef.current, dir)
+    if (isStepHoldBlocked(latchedDirRef.current, dir)) return
     // Direction is non-center here, so this is always 'prev' | 'next'.
     const screenDir = gazeStepDirection(dir) ?? 'next'
     stepTimerRef.current = setTimeout(() => {
-      stepLatchedRef.current = true
-      stepFocus(screenDir)
+      if (stepFocus(screenDir)) {
+        latchedDirRef.current = dir
+      }
     }, STEP_SUSTAIN_MS)
     return () => {
       if (stepTimerRef.current) {
@@ -234,9 +319,8 @@ export function InteractionProvider({
     }
   }, [gazeDirection, mode, paused, stepFocus])
 
-  // ── Blink handling for both modes.
-  // Scan: a blink fires the highlighted target. Gaze: the first blink arms the
-  // focused target; a second blink on the same target confirms and fires it.
+  // ── Blink handling for both modes: first blink arms the focused target; a
+  // second blink on the same target confirms and fires it.
   useEffect(() => {
     if (paused) return
     if (blinkSignal <= prevBlinkSignalRef.current) {
@@ -244,11 +328,6 @@ export function InteractionProvider({
       return
     }
     prevBlinkSignalRef.current = blinkSignal
-
-    if (mode === 'scan') {
-      targetsRef.current[focusedIndex]?.onSelect()
-      return
-    }
 
     const fid = focusedIdRef.current
     if (!fid) return
@@ -258,20 +337,27 @@ export function InteractionProvider({
     } else {
       setArmed(fid)
     }
-  }, [blinkSignal, mode, paused, focusedIndex, setArmed])
+  }, [blinkSignal, paused, setArmed])
 
-  // Scan mode: spacebar selection helper for testing and accessibility.
+  // Scan mode: spacebar arm/confirm helper for testing (mirrors blink handling).
   useEffect(() => {
     if (mode !== 'scan' || paused) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         e.preventDefault()
-        targetsRef.current[focusedIndex]?.onSelect()
+        const fid = focusedIdRef.current
+        if (!fid) return
+        if (armedIdRef.current === fid) {
+          setArmed(null)
+          targetsRef.current.find(t => t.id === fid)?.onSelect()
+        } else {
+          setArmed(fid)
+        }
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [mode, focusedIndex, paused])
+  }, [mode, paused, setArmed])
 
   const dwellProgress = armedTargetId ? 1 : 0
   // Only surface a live direction while gaze input is actually driving focus.

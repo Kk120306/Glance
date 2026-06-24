@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@glance/shared/db'
-import { messages, patients } from '@glance/shared/db/schema'
-import { eq } from 'drizzle-orm'
+import { messages, patients, personas, patientCaregivers } from '@glance/shared/db/schema'
+import { and, eq } from 'drizzle-orm'
 import type { EmitRequest } from '@glance/shared/ws'
 
 const patientMessageSchema = z.object({
   content: z.string().min(1, 'Message cannot be empty').max(1000, 'Message too long'),
+  // The persona this phrase is a reply TO, so the dashboard scopes it to that
+  // person's thread instead of showing it to everyone. Omitted for general phrases.
+  replyToPersonaId: z.string().uuid('Invalid persona ID').optional(),
 })
 
 /**
@@ -34,12 +37,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
+  // Resolve the reply target: only honor a persona that belongs to a caregiver
+  // linked to this patient (the device can't be trusted to send a valid id). An
+  // unknown/foreign persona is silently dropped to null rather than rejected, so
+  // a stale client never blocks the patient from speaking.
+  let replyPersonaId: string | null = null
+  if (parsed.data.replyToPersonaId) {
+    const [persona] = await db
+      .select({ id: personas.id })
+      .from(personas)
+      .innerJoin(patientCaregivers, eq(patientCaregivers.familyMemberId, personas.familyMemberId))
+      .where(and(eq(personas.id, parsed.data.replyToPersonaId), eq(patientCaregivers.patientId, patient.id)))
+    if (persona) replyPersonaId = persona.id
+  }
+
   const [message] = await db
     .insert(messages)
     .values({
       senderId: null,
       senderPatientId: patient.id,
       recipientId: patient.id,
+      personaId: replyPersonaId,
       content: parsed.data.content,
       isYesNo: false,
       toneClass: 'neutral',

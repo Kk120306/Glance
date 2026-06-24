@@ -17,11 +17,12 @@ import { useGazeTracker } from '../hooks/useGazeTracker'
 import { useInteractiveTarget } from '../hooks/useInteractiveTarget'
 import { YesNoScreen } from './YesNoScreen'
 import { GazeTrackingPanel } from './GazeTrackingPanel'
-import { PhraseBoard, FIXED_PHRASES } from './PhraseBoard'
+import { PhraseBoard, FIXED_PHRASES, type ReplySuggestion } from './PhraseBoard'
 import { PhraseConfirmScreen } from './PhraseConfirmScreen'
 import { QuickYesNo } from './QuickYesNo'
 import { BlobAgent, type BlobTone } from './BlobAgent'
 import { DwellRing } from './DwellRing'
+import { FocusArriveRing } from './FocusChrome'
 import { CalibrationScreen } from './CalibrationScreen'
 import { loadStoredEarThreshold, saveEarThreshold } from '../utils/calibration'
 import { meanAmplitude, stepSosSustain } from '../utils/sosAmplitude'
@@ -31,6 +32,13 @@ export const SOS_THRESHOLD = 0.15
 const MIC_CHECK_INTERVAL_MS = 200
 const SOS_SUSTAIN_MS = 1500
 const SCHEDULE_CHECK_INTERVAL_MS = 30_000
+// How long the gated camera-check stage waits for a stream before falling through
+// to scan mode. A stuck/permission-pending camera must never trap the patient on
+// the setup screen — every branch eventually reaches the dashboard.
+const CAMERA_CHECK_TIMEOUT_MS = 10_000
+
+/** Gated startup stages before the dashboard: scan the camera, calibrate, then enter. */
+type SetupStage = 'camera' | 'calibrate' | 'done'
 
 interface PatientConfig {
   id: string
@@ -45,6 +53,9 @@ interface CurrentMessage {
   toneClass: string
   mediaUrl?: string | null
   mediaType?: string | null
+  /** Persona the message was sent AS, so a reply can be directed back to that
+   *  same person (null = sent by the account directly). */
+  personaId?: string | null
   /** Who the message is from (persona name, else the family member's name). */
   senderName?: string | null
 }
@@ -52,6 +63,16 @@ interface CurrentMessage {
 /** Map a message's stored tone class to a Blob expression (defaults to neutral). */
 function toBlobTone(toneClass: string | undefined): BlobTone {
   return toneClass === 'warm' || toneClass === 'urgent' ? toneClass : 'neutral'
+}
+
+/** Map API suggestion payloads (objects or legacy strings) to ReplySuggestion[]. */
+function normalizeSuggestions(
+  raw: Array<{ text: string; tone?: string } | string> | undefined,
+): ReplySuggestion[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((s) => (typeof s === 'string' ? { text: s } : s))
+    .filter((s) => typeof s.text === 'string' && s.text.trim().length > 0)
 }
 
 interface PatientScreenProps {
@@ -78,11 +99,23 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
   const [showPhraseBoard, setShowPhraseBoard] = useState(false)
   const [showQuickYesNo, setShowQuickYesNo] = useState(false)
   const [showCalibration, setShowCalibration] = useState(false)
+  // Gated startup flow stage. The dashboard does not render until this reaches
+  // 'done': the patient first lands on a camera-check screen, then (if a camera is
+  // available) the calibration wizard, and only then the dashboard. Camera denied /
+  // off-schedule / hardware-stuck cases skip calibration and advance — never a lockout.
+  const [setupStage, setSetupStage] = useState<SetupStage>('camera')
+  // True once the startup calibration has run and closed (completed or skipped).
+  // Gates the queue read-aloud so a message is never spoken over/before the
+  // wizard. Scan/off-camera startups (no stream) bypass this — see the read effect.
+  const [calibrationDone, setCalibrationDone] = useState(false)
   // A phrase the patient selected and is now confirming before it sends (AI
   // Content Gate: nothing sends without an explicit confirm).
   const [phrasePending, setPhrasePending] = useState<string | null>(null)
-  // LLM-ranked reply suggestions for the message currently on screen, or null.
-  const [rankedSuggestions, setRankedSuggestions] = useState<string[] | null>(null)
+  // AI reply suggestions scoped to a specific caregiver message, or null.
+  const [rankedSuggestions, setRankedSuggestions] = useState<{
+    messageId: string
+    suggestions: ReplySuggestion[]
+  } | null>(null)
   // True while a message (or candidate phrase) is being spoken — drives the Blob.
   const [speaking, setSpeaking] = useState(false)
   // Custom blink threshold from a prior calibration (persisted in localStorage).
@@ -103,17 +136,13 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
     return () => clearInterval(id)
   }, [])
 
-  // Auto-run calibration once per session, as soon as the camera is available.
-  // Calibration is meaningless without the camera (it measures EAR from video),
-  // so it waits for the stream rather than firing in scan-only startups. The
-  // wizard itself is fully autonomous and self-closes — no human input required.
-  const autoCalibratedRef = useRef(false)
-
   const audioCtxRef = useRef<AudioContext | null>(null)
   const socketRef = useRef<Socket | null>(null)
   const sosAmplitudeRef = useRef(0)
   const sosStartRef = useRef<number | null>(null)
   const micCleanupRef = useRef<(() => void) | null>(null)
+  const suggestionsAbortRef = useRef<AbortController | null>(null)
+  const suggestionsForMessageIdRef = useRef<string | null>(null)
 
   // ── Camera stream (respects schedule + hard constraint: track.stop() on deactivate)
   const { stream, videoRef, permissionDenied } = useCameraStream({
@@ -132,14 +161,49 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
   const interactionMode: 'gaze' | 'scan' =
     stream && modelReady && facePresent ? 'gaze' : 'scan'
 
-  // Fire the one-shot startup calibration once the session is live and a camera
-  // stream exists. Runs every fresh startup (per page load); the wizard waits for
-  // a face, samples, saves, and closes itself with no human input.
+  // Resolve the gated 'camera' stage of the startup flow. The patient sits on the
+  // camera-check screen until exactly one branch fires:
+  //   • a live stream      → advance to calibration
+  //   • permission denied  → no camera to calibrate → scan mode, enter dashboard
+  //   • off-schedule        → camera intentionally off → scan mode, enter dashboard
+  //   • timeout            → camera stuck/pending → fall through to scan mode
+  // Every path advances, so the patient can never be trapped before the dashboard.
   useEffect(() => {
-    if (!activated || !stream || autoCalibratedRef.current) return
-    autoCalibratedRef.current = true
-    setShowCalibration(true)
-  }, [activated, stream])
+    if (!activated || setupStage !== 'camera') return
+    if (stream) {
+      setSetupStage('calibrate')
+      return
+    }
+    if (permissionDenied) {
+      setCalibrationDone(true)
+      setSetupStage('done')
+      return
+    }
+    // Config has loaded and this is not a camera window: nothing to calibrate.
+    if (patientConfig && !isCameraWindowActive(schedules, cameraOverride)) {
+      setCalibrationDone(true)
+      setSetupStage('done')
+      return
+    }
+    // Still waiting on config/permission/hardware — never block indefinitely.
+    const id = setTimeout(() => {
+      setCalibrationDone(true)
+      setSetupStage('done')
+    }, CAMERA_CHECK_TIMEOUT_MS)
+    return () => clearTimeout(id)
+  }, [activated, setupStage, stream, permissionDenied, patientConfig, schedules, cameraOverride])
+
+  // The setup flow and the dashboard each render their own hidden <video>, so the
+  // element backing videoRef is swapped when the flow transitions to 'done'. The
+  // camera stream is acquired once and won't re-bind itself, so re-attach it to
+  // whichever element is currently mounted whenever the stream or stage changes.
+  useEffect(() => {
+    const el = videoRef.current
+    if (el && stream && el.srcObject !== stream) {
+      el.srcObject = stream
+      el.play().catch(() => {})
+    }
+  }, [stream, setupStage, videoRef])
 
   // ── Update cameraActive on schedule interval
   useEffect(() => {
@@ -246,9 +310,18 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
         const res = await fetch(`${dashboardUrl}/api/tts?messageId=${messageId}`, {
           headers: { 'x-device-token': deviceToken },
         })
-        if (!res.ok) throw new Error(`TTS error ${res.status}`)
+        if (!res.ok) {
+          const errBody = await res.text().catch(() => '')
+          console.warn('[tts] dashboard API failed:', res.status, errBody)
+          throw new Error(`TTS error ${res.status}`)
+        }
 
         const blob = await res.blob()
+        if (blob.size === 0) {
+          console.warn('[tts] empty audio response for message', messageId)
+          throw new Error('TTS empty response')
+        }
+
         const url = URL.createObjectURL(blob)
         const audio = new Audio(url)
         setSpeaking(true)
@@ -261,7 +334,8 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
           URL.revokeObjectURL(url)
         }
         await audio.play()
-      } catch {
+      } catch (err) {
+        console.warn('[tts] using device voice fallback:', err)
         // Fallback: local Web Speech API (also drives the Blob).
         speakLocal(content)
       }
@@ -284,28 +358,58 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
     [dashboardUrl, deviceToken],
   )
 
-  // ── Fetch LLM-ranked reply suggestions for an incoming message. The patient's
-  // own frozen phrase list is sent and merely reordered server-side, so only
-  // curated phrases can ever come back (AI Content Gate). Best-effort: on any
-  // failure the board simply falls back to the full phrase grid.
+  // ── Fetch AI reply suggestions for an incoming message. The server generates
+  // contextual replies (with ranked phrase-library fallback). Suggestions are only
+  // stored when the server reports ranked:true; otherwise the board shows the full
+  // phrase grid. Stale responses are ignored via messageId + abort.
   const fetchSuggestions = useCallback(
-    async (content: string) => {
+    async (
+      messageId: string,
+      content: string,
+      opts?: { regenerate?: boolean; senderName?: string | null },
+    ) => {
+      suggestionsAbortRef.current?.abort()
+      const controller = new AbortController()
+      suggestionsAbortRef.current = controller
+      suggestionsForMessageIdRef.current = messageId
+
       try {
         const res = await fetch(`${dashboardUrl}/api/suggestions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-device-token': deviceToken },
-          body: JSON.stringify({ messageContent: content, phrases: FIXED_PHRASES }),
+          body: JSON.stringify({
+            messageContent: content,
+            senderName: opts?.senderName ?? undefined,
+            regenerate: opts?.regenerate ?? false,
+            phrases: FIXED_PHRASES,
+          }),
+          signal: controller.signal,
         })
+        if (controller.signal.aborted) return
+        if (suggestionsForMessageIdRef.current !== messageId) return
+
         if (!res.ok) {
-          setRankedSuggestions(null)
+          setRankedSuggestions((prev) => (prev?.messageId === messageId ? null : prev))
           return
         }
-        const data = (await res.json()) as { suggestions?: string[] }
-        setRankedSuggestions(
-          Array.isArray(data.suggestions) && data.suggestions.length > 0 ? data.suggestions : null,
-        )
-      } catch {
-        setRankedSuggestions(null)
+
+        const data = (await res.json()) as {
+          suggestions?: Array<{ text: string; tone?: string } | string>
+          ranked?: boolean
+        }
+        if (controller.signal.aborted) return
+        if (suggestionsForMessageIdRef.current !== messageId) return
+
+        const suggestions = normalizeSuggestions(data.suggestions)
+        if (data.ranked === true && suggestions.length > 0) {
+          setRankedSuggestions({ messageId, suggestions })
+        } else {
+          setRankedSuggestions((prev) => (prev?.messageId === messageId ? null : prev))
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (suggestionsForMessageIdRef.current !== messageId) return
+        setRankedSuggestions((prev) => (prev?.messageId === messageId ? null : prev))
       }
     },
     [dashboardUrl, deviceToken],
@@ -313,11 +417,33 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
 
   // ── Advance past the current message to the next queued one (or back to idle
   // when the queue empties). Called when the patient hits "Next message", answers
-  // a Yes/No, or confirms a reply.
+  // a Yes/No, or confirms a reply. Mark the departing message read here too so
+  // "Next message" always clears the receipt even if the display effect missed it.
   const advanceQueue = useCallback(() => {
-    setMessageQueue((q) => q.slice(1))
+    suggestionsAbortRef.current?.abort()
+    suggestionsForMessageIdRef.current = null
+    setMessageQueue((q) => {
+      if (q[0]) markRead(q[0].id)
+      return q.slice(1)
+    })
     setRankedSuggestions(null)
-  }, [])
+  }, [markRead])
+
+  // ── Read receipt: fire as soon as a message is on the live dashboard, independent
+  // of TTS/calibration gating so the caregiver always sees "Seen ✓" when the
+  // patient can read and reply.
+  const readReceiptSentRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!currentMessage) {
+      readReceiptSentRef.current = null
+      return
+    }
+    if (setupStage !== 'done') return
+    if (showCalibration) return
+    if (readReceiptSentRef.current === currentMessage.id) return
+    readReceiptSentRef.current = currentMessage.id
+    markRead(currentMessage.id)
+  }, [currentMessage, markRead, setupStage, showCalibration])
 
   // ── Whenever a new message reaches the head of the queue, read it aloud and
   // prefetch reply suggestions — exactly once per message (tracked by id), so
@@ -328,14 +454,47 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
       spokenMessageIdRef.current = null
       return
     }
+    // Hold the read-aloud until the gated setup flow (camera check → calibration)
+    // has finished — the dashboard isn't even on screen yet, so a message must
+    // never be spoken during setup. After that, also hold while a re-launched
+    // calibration overlay is open. Messages keep queuing; this re-runs once the
+    // flow ends, so nothing is dropped.
+    if (setupStage !== 'done') return
+    if (showCalibration) return
+    if (stream && !calibrationDone) return
     if (spokenMessageIdRef.current === currentMessage.id) return
     spokenMessageIdRef.current = currentMessage.id
     setRankedSuggestions(null)
-    if (!currentMessage.isYesNo) void fetchSuggestions(currentMessage.content)
+    if (!currentMessage.isYesNo) {
+      void fetchSuggestions(currentMessage.id, currentMessage.content, {
+        senderName: currentMessage.senderName,
+      })
+    }
     void playTTS(currentMessage.id, currentMessage.content)
-    // The message is now on screen and read aloud → tell the dashboard it was seen.
-    markRead(currentMessage.id)
-  }, [currentMessage, fetchSuggestions, playTTS, markRead])
+  }, [currentMessage, fetchSuggestions, playTTS, setupStage, showCalibration, calibrationDone, stream])
+
+  // Open the reply board for the on-screen message, re-fetching suggestions when
+  // they are missing or belong to a different message (slow network / failed prefetch).
+  const openReplyBoard = useCallback(() => {
+    if (currentMessage && !currentMessage.isYesNo) {
+      const stale =
+        !rankedSuggestions || rankedSuggestions.messageId !== currentMessage.id
+      if (stale) {
+        void fetchSuggestions(currentMessage.id, currentMessage.content, {
+          senderName: currentMessage.senderName,
+        })
+      }
+    }
+    setShowPhraseBoard(true)
+  }, [currentMessage, rankedSuggestions, fetchSuggestions])
+
+  const regenerateSuggestions = useCallback(() => {
+    if (!currentMessage || currentMessage.isYesNo) return
+    void fetchSuggestions(currentMessage.id, currentMessage.content, {
+      regenerate: true,
+      senderName: currentMessage.senderName,
+    })
+  }, [currentMessage, fetchSuggestions])
 
   // ── SOS dispatch
   const triggerSOS = useCallback(async () => {
@@ -370,13 +529,15 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
   // ── Persist + broadcast a confirmed phrase. Failures are logged only: the
   // local vocalization already gave feedback, so we never block or alarm the patient.
   const postPhrase = useCallback(
-    (phrase: string) => {
+    (phrase: string, replyToPersonaId?: string | null) => {
       void (async () => {
         try {
           const res = await fetch(`${dashboardUrl}/api/messages/patient`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-device-token': deviceToken },
-            body: JSON.stringify({ content: phrase }),
+            // Direct the reply at the person who sent the on-screen message, so the
+            // dashboard keeps it in that person's thread (omitted = general phrase).
+            body: JSON.stringify({ content: phrase, ...(replyToPersonaId ? { replyToPersonaId } : {}) }),
           })
           if (!res.ok) console.warn(`[phrase] server rejected phrase: ${res.status}`)
         } catch (err) {
@@ -400,11 +561,13 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
   // Step 2a — confirmed: send it, close the phrase board, and advance past the
   // message just replied to (a no-op when the board was opened from idle).
   const confirmPhrase = useCallback(() => {
-    if (phrasePending) postPhrase(phrasePending)
+    // If a caregiver message is on screen, this is a reply to its sender — direct
+    // it at that persona so it lands in the right thread (null when from idle).
+    if (phrasePending) postPhrase(phrasePending, currentMessage?.personaId)
     setPhrasePending(null)
     setShowPhraseBoard(false)
     advanceQueue()
-  }, [phrasePending, postPhrase, advanceQueue])
+  }, [phrasePending, postPhrase, advanceQueue, currentMessage])
 
   // Step 2b — cancelled: drop the candidate and return to the board.
   const cancelPhrase = useCallback(() => setPhrasePending(null), [])
@@ -431,11 +594,11 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
 
       socket.on('NEW_MESSAGE', (envelope: ServerToClientMessage) => {
         if (envelope.type !== 'NEW_MESSAGE') return
-        const { id, content, isYesNo, toneClass, mediaUrl, mediaType, senderName } = envelope.payload
+        const { id, content, isYesNo, toneClass, mediaUrl, mediaType, personaId, senderName } = envelope.payload
         // Queue it — never overwrite a message the patient is still reading. The
         // head-of-queue effect handles TTS + suggestions once it reaches screen.
         setMessageQueue((q) =>
-          q.some((m) => m.id === id) ? q : [...q, { id, content, isYesNo, toneClass, mediaUrl, mediaType, senderName }],
+          q.some((m) => m.id === id) ? q : [...q, { id, content, isYesNo, toneClass, mediaUrl, mediaType, personaId, senderName }],
         )
       })
 
@@ -532,6 +695,66 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
     )
   }
 
+  // ── Gated setup flow: camera check → calibration → dashboard. The dashboard is
+  // not mounted until calibration has finished (or been safely skipped), so a
+  // patient is never dropped into the live dashboard mid-calibration. The hidden
+  // video below feeds the gaze tracker so EAR sampling works during this phase.
+  if (setupStage !== 'done') {
+    return (
+      <div
+        className="relative flex h-screen w-full flex-col items-center justify-center overflow-hidden"
+        style={{
+          background:
+            'radial-gradient(1100px 760px at 50% 22%,#FBF6F0 0%,#F4EEE6 52%,#EFE7DC 100%)',
+        }}
+      >
+        <div className="pointer-events-none absolute -left-32 -top-40 h-[460px] w-[460px] rounded-full"
+          style={{ background: 'radial-gradient(circle,#E7DBFF,transparent 70%)', opacity: 0.55 }} />
+        <div className="pointer-events-none absolute -bottom-44 -right-32 h-[520px] w-[520px] rounded-full"
+          style={{ background: 'radial-gradient(circle,#FBDCEF,transparent 70%)', opacity: 0.5 }} />
+
+        {/* Hidden video for MediaPipe gaze/EAR — must be mounted during setup so
+            calibration can sample the live stream before the dashboard exists. */}
+        <video
+          ref={videoRef}
+          className="absolute"
+          style={{ width: 0, height: 0, opacity: 0, pointerEvents: 'none' }}
+          autoPlay
+          muted
+          playsInline
+        />
+
+        {setupStage === 'camera' ? (
+          <CameraCheckScreen
+            permissionDenied={permissionDenied}
+            facePresent={facePresent}
+            onSkip={() => {
+              setCalibrationDone(true)
+              setSetupStage('done')
+            }}
+          />
+        ) : (
+          <CalibrationScreen
+            earRef={earRef}
+            gazeOffsetRef={gazeOffsetRef}
+            facePresent={facePresent}
+            onRecenter={recenter}
+            onComplete={(threshold) => {
+              saveEarThreshold(window.localStorage, threshold)
+              setEarThreshold(threshold)
+              setCalibrationDone(true)
+              setSetupStage('done')
+            }}
+            onExit={() => {
+              setCalibrationDone(true)
+              setSetupStage('done')
+            }}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <InteractionProvider
       mode={interactionMode}
@@ -580,7 +803,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
               )}
               <StatusPill>
                 <span style={{ color: colors.brand.deep }}>
-                  {interactionMode === 'gaze' ? 'Look to move · blink ×2' : 'Blink to choose'}
+                  {interactionMode === 'gaze' ? 'Look to move · blink ×2' : 'Blink twice to choose'}
                 </span>
               </StatusPill>
               <GazeSteerHUD />
@@ -675,7 +898,7 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
               <ActionTile id="read:again" icon="🔊" label="Play again" primary
                 onSelect={() => void playTTS(currentMessage.id, currentMessage.content)} />
               <ActionTile id="read:reply" icon="↩" label="Reply"
-                onSelect={() => setShowPhraseBoard(true)} />
+                onSelect={openReplyBoard} />
               <ActionTile id="read:next" icon="→" label={messageQueue.length > 1 ? 'Next message' : 'Done'}
                 onSelect={advanceQueue} />
             </div>
@@ -726,7 +949,18 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
           <PhraseBoard
             onPhrase={selectPhrase}
             onClose={() => setShowPhraseBoard(false)}
-            rankedSuggestions={rankedSuggestions ?? undefined}
+            rankedSuggestions={
+              currentMessage &&
+              !currentMessage.isYesNo &&
+              rankedSuggestions?.messageId === currentMessage.id
+                ? rankedSuggestions.suggestions
+                : undefined
+            }
+            senderName={currentMessage?.senderName}
+            messageContent={currentMessage?.content}
+            onRegenerate={
+              currentMessage && !currentMessage.isYesNo ? regenerateSuggestions : undefined
+            }
           />
         )}
 
@@ -793,12 +1027,77 @@ export function PatientScreen({ wsServerUrl, dashboardUrl, deviceToken }: Patien
               saveEarThreshold(window.localStorage, threshold)
               setEarThreshold(threshold)
               setShowCalibration(false)
+              setCalibrationDone(true)
             }}
-            onExit={() => setShowCalibration(false)}
+            onExit={() => {
+              setShowCalibration(false)
+              setCalibrationDone(true)
+            }}
           />
         )}
       </div>
     </InteractionProvider>
+  )
+}
+
+/**
+ * First gated setup screen: a calm "getting ready" view shown while we determine
+ * whether the camera is available. It resolves automatically (the parent advances
+ * to calibration once a stream is live, or straight to the dashboard in scan mode),
+ * so the patient never has to act here. A quiet "Continue without camera" link is
+ * the only control — a no-lockout safety valve a caregiver can tap if the camera
+ * is slow or unavailable; the flow otherwise completes on its own.
+ */
+function CameraCheckScreen({
+  permissionDenied,
+  facePresent,
+  onSkip,
+}: {
+  permissionDenied: boolean
+  facePresent: boolean
+  onSkip: () => void
+}) {
+  const status = permissionDenied
+    ? "Camera's off — we'll use scan mode (blink twice to choose)."
+    : facePresent
+      ? 'Found you! Getting calibration ready…'
+      : 'Looking for your camera and getting set up…'
+
+  return (
+    <div className="relative z-10 flex flex-col items-center gap-2 px-10 text-center">
+      <BlobAgent tone="warm" size="200px" className="mb-2" />
+      <div
+        style={{
+          fontFamily: typography.fontFamily.serif,
+          fontSize: '46px',
+          fontWeight: 600,
+          letterSpacing: '-0.02em',
+          color: colors.ink,
+        }}
+      >
+        Getting ready
+      </div>
+      <p className="mb-3 max-w-md" style={{ fontSize: '22px', color: colors.inkBody }}>
+        {status}
+      </p>
+      {!permissionDenied && (
+        <div className="flex items-center gap-3" style={{ color: colors.inkMuted }}>
+          <span
+            className="inline-block h-3 w-3 rounded-full"
+            style={{ background: colors.brand.primary, animation: 'breathe 1s ease-in-out infinite' }}
+          />
+          <span style={{ fontSize: 16, fontWeight: 700 }}>Checking your camera</span>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onSkip}
+        className="mt-6 font-bold"
+        style={{ color: colors.inkFaint, fontSize: 16 }}
+      >
+        Continue without camera →
+      </button>
+    </div>
   )
 }
 
@@ -866,21 +1165,6 @@ function StatusPill({ children }: { children: ReactNode }) {
 }
 
 /**
- * One-shot inner ring that flares the moment gaze focus lands on a target. It is
- * rendered only while the target is focused and remounts on each new focus, so
- * the CSS animation replays every time — the patient sees the step arrive.
- */
-function FocusArriveRing({ radius, light = false }: { radius: number; light?: boolean }) {
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute inset-0 z-10"
-      style={{ borderRadius: radius, animation: `${light ? 'focusArriveLight' : 'focusArrive'} 460ms ease-out` }}
-    />
-  )
-}
-
-/**
  * Global steering indicator: shows the live gaze direction and a bar that fills
  * over the step-sustain window, so the patient can see their eye movement is
  * about to move focus to the next tile — before it happens. Gaze mode only.
@@ -918,7 +1202,11 @@ function HomeTile({
 }: {
   id: string; icon: string; iconBg: string; title: string; subtitle: string; onSelect: () => void
 }) {
-  const { ref, focused, armed, dwellProgress } = useInteractiveTarget<HTMLButtonElement>(id, onSelect)
+  const { ref, focused, armed, dwellProgress } = useInteractiveTarget<HTMLButtonElement>(
+    id,
+    onSelect,
+    { gazeGroup: 'home' },
+  )
   return (
     <button
       ref={ref}

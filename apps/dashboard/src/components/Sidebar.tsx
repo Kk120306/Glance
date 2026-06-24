@@ -10,11 +10,10 @@ export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { data: session } = useSession()
-  const { patients, totalUnseen } = useDashboard()
+  const { patients } = useDashboard()
 
   // Determine active states
   const isPatientsActive = pathname === '/dashboard' || pathname.startsWith('/patients')
-  const isMessagesActive = pathname === '/dashboard/messages'
   const isVoiceLibraryActive = pathname === '/dashboard/voice-library'
   const isCalibrationActive = pathname === '/dashboard/calibration'
   const isSettingsActive = pathname === '/dashboard/settings'
@@ -65,21 +64,6 @@ export function Sidebar() {
           {patients.length > 0 && (
             <span className="ml-auto rounded-full bg-brand-primary px-2.5 py-0.5 text-[13px] font-bold text-white">
               {patients.length}
-            </span>
-          )}
-        </Link>
-
-        {/* Messages Nav Item */}
-        <Link href="/dashboard/messages" className={navItemClass(isMessagesActive)}>
-          <span className="text-xl">💬</span>
-          <span>Messages</span>
-          {totalUnseen > 0 && (
-            <span
-              className="ml-auto rounded-full px-2.5 py-0.5 text-[13px] font-bold text-white"
-              style={{ background: '#E5484D' }}
-              title={`${totalUnseen} message${totalUnseen === 1 ? '' : 's'} your ${totalUnseen === 1 ? 'patient hasn’t' : 'patients haven’t'} seen yet`}
-            >
-              {totalUnseen}
             </span>
           )}
         </Link>

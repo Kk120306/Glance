@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Glance — Pitch Deck</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --bar: #2563eb;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #111827;
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    .deck {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .slide {
+      display: none;
+      width: min(1280px, 96vw);
+      height: min(720px, 90vh);
+      background: var(--bg);
+      border-radius: 8px;
+      position: relative;
+      padding: 64px 72px 56px 80px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+    }
+
+    .slide.active { display: block; }
+
+    .slide::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 8px;
+      background: var(--bar);
+      border-radius: 8px 0 0 8px;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 4vw, 2.75rem);
+      line-height: 1.15;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
+      color: var(--muted);
+      line-height: 1.5;
+      max-width: 52rem;
+      margin-bottom: 2rem;
+    }
+
+    ul {
+      list-style: none;
+      margin-top: 1.5rem;
+    }
+
+    li {
+      font-size: clamp(1rem, 1.8vw, 1.25rem);
+      line-height: 1.55;
+      margin-bottom: 1rem;
+      padding-left: 1.4rem;
+      position: relative;
+      max-width: 54rem;
+    }
+
+    li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.55em;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .footer {
+      position: absolute;
+      right: 48px;
+      bottom: 28px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .brand {
+      position: absolute;
+      left: 80px;
+      bottom: 28px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.92);
+      color: #e2e8f0;
+      padding: 10px 16px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      z-index: 10;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .hint {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      color: #94a3b8;
+      font-size: 0.75rem;
+      z-index: 10;
+    }
+
+    .title-slide h1 { font-size: clamp(2.5rem, 5vw, 3.5rem); }
+    .title-slide ul { margin-top: 2.5rem; }
+
+    @media print {
+      html, body { background: white; overflow: visible; }
+      .deck { display: block; height: auto; }
+      .slide {
+        display: block !important;
+        width: 100%;
+        height: 100vh;
+        page-break-after: always;
+        box-shadow: none;
+        border-radius: 0;
+      }
+      .controls, .hint { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="hint">← → or Space · F fullscreen</div>
+  <div class="deck" id="deck"></div>
+  <div class="controls">
+    <button id="prev">Prev</button>
+    <span id="counter">1 / 10</span>
+    <button id="next">Next</button>
+  </div>
+
+  <script>
+    const slides = [
+      {
+        title: "Glance",
+        subtitle: "Hands-free communication for people who cannot use a keyboard, mouse, or touchscreen.",
+        bullets: [
+          "Real-time messaging between family and motor-impaired patients",
+          "Reply with gaze and blink — never touch the screen",
+          "Built for locked-in syndrome, ALS, cerebral palsy, and similar conditions",
+        ],
+        titleSlide: true,
+      },
+      {
+        title: "The Problem",
+        bullets: [
+          "Millions live with severe motor impairment and cannot type, tap, or point",
+          "Families want to stay connected — but have no real-time channel that works without hands",
+          "Commercial AAC devices cost $5,000–$20,000+ and require clinical setup",
+          "Existing tools don't run on a laptop, webcam, and microphone you already own",
+        ],
+      },
+      {
+        title: "What's at Stake",
+        bullets: [
+          "Can't answer a simple yes/no question from a loved one in the moment",
+          "Can't request water, pain relief, or help without a caregiver in the room",
+          "Can't trigger emergency help when the camera is off",
+          "Communication becomes slow, one-directional, and emotionally distant",
+        ],
+      },
+      {
+        title: "Our Solution",
+        bullets: [
+          "Glance is a hands-free AAC platform: receive messages, reply with eyes, signal distress anytime",
+          "Patient app: animated guide reads messages aloud; gaze selects curated replies",
+          "Family dashboard: compose messages, clone your voice, manage multiple patients",
+          "Zero hands. Zero keyboard. Zero mouse. Ever.",
+        ],
+      },
+      {
+        title: "How It Works",
+        bullets: [
+          "Family sends a message — tone classified, delivered in their cloned voice",
+          "Patient hears it via an expressive on-screen guide synced to speech",
+          "Patient selects from AI-ranked phrase suggestions — always confirms before send",
+          "Yes/no questions auto-detect: giant UP=YES / DOWN=NO targets",
+          "SOS works without the camera via calibrated vocalization detection",
+        ],
+      },
+      {
+        title: "Why Glance Wins",
+        bullets: [
+          "Off-the-shelf hardware — browser, webcam, mic; no proprietary device",
+          "Voice cloning in-app — messages feel personal, not robotic",
+          "Ethical AI gate — curated suggestions only; patient always confirms",
+          "ScanMode fallback when camera unavailable; SOS always works via microphone",
+          "Privacy-aware camera windows with enforced track cleanup",
+        ],
+      },
+      {
+        title: "Market Opportunity",
+        bullets: [
+          "Global AAC market projected at $4B+ and growing with aging populations",
+          "Beachhead: home-based care for ALS, locked-in syndrome, severe CP, stroke recovery",
+          "Expand: skilled nursing facilities, rehab centers, telehealth care teams",
+        ],
+      },
+      {
+        title: "Business Model",
+        bullets: [
+          "SaaS subscription per patient household — dashboard + patient app + real-time alerts",
+          "Tiered plans: single patient, multi-patient family, facility license",
+          "Usage-based pass-through for voice synthesis at scale",
+          "Partnerships with ALS associations, rehab networks, and payers",
+        ],
+      },
+      {
+        title: "Traction & Status",
+        bullets: [
+          "Feature-complete MVP: messaging, gaze tracking, voice clone, SOS, multi-patient dashboard",
+          "213 automated tests; hard-constraint suite enforces zero-hands and SOS independence",
+          "Phases 1–6 shipped: read receipts, offline queue, sender personas, media upload",
+          "Next: real-device validation with pilot patients and caregivers",
+        ],
+      },
+      {
+        title: "The Ask",
+        bullets: [
+          "Pilot partners: 3–5 patient–caregiver pairs for real-world validation",
+          "Advisors with AAC clinical experience and assistive-tech go-to-market",
+          "Seed capital for pilots, HIPAA-ready infrastructure, and device testing lab",
+          "Glance gives voice back to people the world stopped listening to.",
+        ],
+      },
+    ];
+
+    let index = 0;
+    const deck = document.getElementById("deck");
+    const counter = document.getElementById("counter");
+    const prevBtn = document.getElementById("prev");
+    const nextBtn = document.getElementById("next");
+
+    deck.innerHTML = slides.map((s, i) => `
+      <section class="slide ${s.titleSlide ? "title-slide" : ""}" data-index="${i}">
+        <h1>${s.title}</h1>
+        ${s.subtitle ? `<p class="subtitle">${s.subtitle}</p>` : ""}
+        <ul>${s.bullets.map(b => `<li>${b}</li>`).join("")}</ul>
+        <div class="brand">Glance</div>
+        <div class="footer">${i + 1} / ${slides.length}</div>
+      </section>
+    `).join("");
+
+    function render() {
+      document.querySelectorAll(".slide").forEach((el, i) => {
+        el.classList.toggle("active", i === index);
+      });
+      counter.textContent = `${index + 1} / ${slides.length}`;
+      prevBtn.disabled = index === 0;
+      nextBtn.disabled = index === slides.length - 1;
+    }
+
+    function go(delta) {
+      index = Math.max(0, Math.min(slides.length - 1, index + delta));
+      render();
+    }
+
+    prevBtn.onclick = () => go(-1);
+    nextBtn.onclick = () => go(1);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
+        e.preventDefault();
+        go(1);
+      }
+      if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        go(-1);
+      }
+      if (e.key === "f" || e.key === "F") {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

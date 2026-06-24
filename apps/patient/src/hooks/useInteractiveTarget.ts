@@ -9,19 +9,25 @@ import { useInteraction } from '@glance/shared/design/components'
  * `onSelect` callback is kept in a ref so the registration is stable across
  * re-renders and the latest handler always fires.
  */
-export function useInteractiveTarget<T extends HTMLElement>(id: string, onSelect: () => void) {
+export function useInteractiveTarget<T extends HTMLElement>(
+  id: string,
+  onSelect: () => void,
+  options?: { gazeGroup?: string },
+) {
   const ref = useRef<T | null>(null)
   const { registerTarget, focusedTargetId, armedTargetId, dwellProgress } = useInteraction()
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
+  const gazeGroup = options?.gazeGroup
 
   useEffect(() => {
     return registerTarget({
       id,
       ref: ref as React.RefObject<HTMLElement | null>,
       onSelect: () => onSelectRef.current(),
+      gazeGroup,
     })
-  }, [registerTarget, id])
+  }, [registerTarget, id, gazeGroup])
 
   const focused = focusedTargetId === id
   // Armed: a first blink landed on this focused target — a second blink confirms.

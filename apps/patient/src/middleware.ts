@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const COOKIE_NAME = 'x-device-token'
 const COOKIE_MAX_AGE = 315360000 // 10 years
-const DASHBOARD_URL = process.env.DASHBOARD_URL ?? 'http://localhost:3001'
+/** Browser-facing URL for client fetches lives in DASHBOARD_URL on the page component. */
+const DASHBOARD_INTERNAL_URL =
+  process.env.DASHBOARD_INTERNAL_URL ?? process.env.DASHBOARD_URL ?? 'http://localhost:3001'
 
 /**
  * Is this setup token allowed to pair the device?
@@ -18,7 +20,7 @@ async function isValidSetupToken(token: string): Promise<boolean> {
     return true
   }
   try {
-    const res = await fetch(`${DASHBOARD_URL}/api/patient/me`, {
+    const res = await fetch(`${DASHBOARD_INTERNAL_URL}/api/patient/me`, {
       headers: { 'x-device-token': token },
     })
     return res.ok

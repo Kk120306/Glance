@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
       toneClass: messages.toneClass,
       mediaUrl: messages.mediaUrl,
       mediaType: messages.mediaType,
+      personaId: messages.personaId,
       senderName: familyMembers.name,
       personaName: personas.name,
     })
@@ -60,6 +61,9 @@ export async function GET(req: NextRequest) {
       toneClass: r.toneClass,
       mediaUrl: r.mediaUrl,
       mediaType: r.mediaType,
+      // The persona this message was sent AS, so the patient can direct a reply
+      // back to the same person (null = sent by the account directly).
+      personaId: r.personaId,
       // Persona name wins (the message was sent AS that person), else the account.
       senderName: r.personaName ?? r.senderName ?? null,
     })),

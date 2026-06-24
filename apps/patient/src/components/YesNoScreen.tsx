@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
 import { colors, typography } from '@glance/shared/design/tokens'
-import { useInteraction } from '@glance/shared/design/components'
-import type { InteractiveTarget } from '@glance/shared/design/components'
+import { useInteractiveTarget } from '../hooks/useInteractiveTarget'
 import { BlobAgent } from './BlobAgent'
+import { DwellRing } from './DwellRing'
+import { FocusArriveRing, FocusHint, tileFocusStyle } from './FocusChrome'
 
 interface YesNoScreenProps {
   question: string
@@ -17,10 +17,6 @@ interface YesNoScreenProps {
 }
 
 export function YesNoScreen({ question, senderName, messageId, dashboardUrl, deviceToken, onReply }: YesNoScreenProps) {
-  const { registerTarget } = useInteraction()
-  const yesRef = useRef<HTMLButtonElement | null>(null)
-  const noRef = useRef<HTMLButtonElement | null>(null)
-
   async function submitReply(reply: 'yes' | 'no') {
     try {
       await fetch(`${dashboardUrl}/api/messages/${messageId}/reply`, {
@@ -36,40 +32,6 @@ export function YesNoScreen({ question, senderName, messageId, dashboardUrl, dev
     }
     onReply(reply)
   }
-
-  // Register YES target — gaze LEFT selects it
-  useEffect(() => {
-    const target: InteractiveTarget = {
-      id: 'yes',
-      ref: yesRef as React.RefObject<HTMLElement | null>,
-      onSelect: () => void submitReply('yes'),
-      gazeDirection: 'left',
-    }
-    return registerTarget(target)
-  }, [registerTarget, messageId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Register NO target — gaze RIGHT selects it
-  useEffect(() => {
-    const target: InteractiveTarget = {
-      id: 'no',
-      ref: noRef as React.RefObject<HTMLElement | null>,
-      onSelect: () => void submitReply('no'),
-      gazeDirection: 'right',
-    }
-    return registerTarget(target)
-  }, [registerTarget, messageId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const { focusedTargetId, dwellProgress } = useInteraction()
-  const yesDwell = focusedTargetId === 'yes' ? dwellProgress : 0
-  const noDwell = focusedTargetId === 'no' ? dwellProgress : 0
-  // Which half currently holds focus — drives a clear pre-arm highlight + a flash
-  // when focus lands, so the patient can tell which answer their gaze has landed
-  // on before they blink to confirm.
-  const yesFocused = focusedTargetId === 'yes'
-  const noFocused = focusedTargetId === 'no'
-
-  const R = 100
-  const CIRC = 2 * Math.PI * R
 
   return (
     <div className="absolute inset-0 z-[3] flex flex-col" style={{ background: colors.canvas }}>
@@ -94,68 +56,29 @@ export function YesNoScreen({ question, senderName, messageId, dashboardUrl, dev
 
       {/* Split */}
       <div className="relative flex flex-1">
-        {/* YES — left */}
-        <button
-          ref={yesRef}
-          type="button"
-          onClick={() => void submitReply('yes')}
-          aria-label="Yes"
-          className="relative flex flex-1 flex-col items-center justify-center transition-transform duration-200"
-          style={{
-            background: yesFocused ? 'linear-gradient(180deg,#D2F0E8 0%,#BCE8DC 100%)' : 'linear-gradient(180deg,#E4F7F2 0%,#D2F0E8 100%)',
-            borderRight: '2px solid #F4EEE6',
-            boxShadow: yesFocused ? 'inset 0 0 0 8px rgba(14,147,132,.4)' : 'none',
-          }}
-        >
-          {yesFocused && (
-            <span aria-hidden className="pointer-events-none absolute inset-0 z-10" style={{ animation: 'focusArriveLight 460ms ease-out' }} />
-          )}
-          <div className="relative mb-7 h-[220px] w-[220px]">
-            <svg viewBox="0 0 220 220" className="absolute inset-0" style={{ transform: 'rotate(-90deg)' }}>
-              <circle cx="110" cy="110" r={R} fill="none" stroke="rgba(14,147,132,.18)" strokeWidth="10" />
-              <circle cx="110" cy="110" r={R} fill="none" stroke={colors.patient.affirm} strokeWidth="10" strokeLinecap="round"
-                strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - yesDwell)} />
-            </svg>
-            <div className="absolute inset-[26px] flex items-center justify-center rounded-full text-white"
-              style={{ background: colors.patient.affirm, fontSize: 96, boxShadow: '0 16px 36px rgba(14,147,132,.34)' }}>✓</div>
-          </div>
-          <div style={{ fontFamily: typography.fontFamily.serif, fontSize: 72, fontWeight: 600, color: colors.patient.affirmInk, lineHeight: 1 }}>Yes</div>
-          <div className="mt-3.5 flex items-center gap-2.5 rounded-full bg-white px-6 py-3" style={{ boxShadow: '0 4px 14px rgba(14,147,132,.14)' }}>
-            <span style={{ fontSize: 22 }}>👁️</span>
-            <span className="font-bold" style={{ fontSize: 19, color: colors.patient.affirmInk }}>Look left</span>
-          </div>
-        </button>
-
-        {/* NO — right */}
-        <button
-          ref={noRef}
-          type="button"
-          onClick={() => void submitReply('no')}
-          aria-label="No"
-          className="relative flex flex-1 flex-col items-center justify-center transition-transform duration-200"
-          style={{
-            background: noFocused ? 'linear-gradient(180deg,#F6DEDE 0%,#F0CECE 100%)' : 'linear-gradient(180deg,#FBEDED 0%,#F6DEDE 100%)',
-            boxShadow: noFocused ? 'inset 0 0 0 8px rgba(184,86,86,.4)' : 'none',
-          }}
-        >
-          {noFocused && (
-            <span aria-hidden className="pointer-events-none absolute inset-0 z-10" style={{ animation: 'focusArriveLight 460ms ease-out' }} />
-          )}
-          <div className="relative mb-7 h-[220px] w-[220px]">
-            <svg viewBox="0 0 220 220" className="absolute inset-0" style={{ transform: 'rotate(-90deg)' }}>
-              <circle cx="110" cy="110" r={R} fill="none" stroke="rgba(154,68,68,.16)" strokeWidth="10" />
-              <circle cx="110" cy="110" r={R} fill="none" stroke="#B85656" strokeWidth="10" strokeLinecap="round"
-                strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - noDwell)} />
-            </svg>
-            <div className="absolute inset-[26px] flex items-center justify-center rounded-full text-white"
-              style={{ background: '#B85656', fontSize: 90, boxShadow: '0 16px 36px rgba(154,68,68,.28)' }}>✕</div>
-          </div>
-          <div style={{ fontFamily: typography.fontFamily.serif, fontSize: 72, fontWeight: 600, color: '#9A4444', lineHeight: 1 }}>No</div>
-          <div className="mt-3.5 flex items-center gap-2.5 rounded-full bg-white px-6 py-3" style={{ boxShadow: '0 4px 14px rgba(154,68,68,.12)' }}>
-            <span style={{ fontSize: 22 }}>👁️</span>
-            <span className="font-bold" style={{ fontSize: 19, color: '#9A4444' }}>Look right</span>
-          </div>
-        </button>
+        <YesNoTarget
+          id="yesno:yes"
+          label="Yes"
+          icon="✓"
+          accent={colors.patient.affirm}
+          accentInk={colors.patient.affirmInk}
+          gradient="linear-gradient(180deg,#E4F7F2 0%,#D2F0E8 100%)"
+          gradientFocused="linear-gradient(180deg,#D2F0E8 0%,#BCE8DC 100%)"
+          iconSize={96}
+          divider
+          onSelect={() => void submitReply('yes')}
+        />
+        <YesNoTarget
+          id="yesno:no"
+          label="No"
+          icon="✕"
+          accent="#B85656"
+          accentInk="#9A4444"
+          gradient="linear-gradient(180deg,#FBEDED 0%,#F6DEDE 100%)"
+          gradientFocused="linear-gradient(180deg,#F6DEDE 0%,#F0CECE 100%)"
+          iconSize={90}
+          onSelect={() => void submitReply('no')}
+        />
 
         {/* Center blob */}
         <div className="pointer-events-none absolute left-1/2 top-1/2 z-[4] h-[140px] w-[140px] -translate-x-1/2 -translate-y-1/2">
@@ -171,5 +94,67 @@ export function YesNoScreen({ question, senderName, messageId, dashboardUrl, dev
         <span className="font-bold" style={{ fontSize: 18, color: colors.inkMuted }}>Look to a side, then blink twice to answer.</span>
       </div>
     </div>
+  )
+}
+
+function YesNoTarget({
+  id,
+  label,
+  icon,
+  accent,
+  accentInk,
+  gradient,
+  gradientFocused,
+  iconSize,
+  divider = false,
+  onSelect,
+}: {
+  id: string
+  label: string
+  icon: string
+  accent: string
+  accentInk: string
+  gradient: string
+  gradientFocused: string
+  iconSize: number
+  divider?: boolean
+  onSelect: () => void
+}) {
+  const { ref, focused, armed, dwellProgress } = useInteractiveTarget<HTMLButtonElement>(id, onSelect)
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onSelect}
+      aria-label={label}
+      className="relative flex flex-1 flex-col items-center justify-center overflow-hidden transition-transform duration-200 active:scale-[0.98]"
+      style={{
+        background: focused ? gradientFocused : gradient,
+        ...tileFocusStyle({
+          focused,
+          armed,
+          unfocusedShadow: 'none',
+          splitInnerEdge: divider ? 'right' : undefined,
+        }),
+      }}
+    >
+      <DwellRing progress={dwellProgress} color={colors.brand.primary} />
+      {focused && <FocusArriveRing />}
+      <div className="relative mb-7 h-[220px] w-[220px]">
+        <div
+          className="absolute inset-[26px] flex items-center justify-center rounded-full text-white"
+          style={{ background: accent, fontSize: iconSize, boxShadow: `0 16px 36px ${accent}55` }}
+        >
+          {icon}
+        </div>
+      </div>
+      <div
+        className="relative"
+        style={{ fontFamily: typography.fontFamily.serif, fontSize: 72, fontWeight: 600, color: accentInk, lineHeight: 1 }}
+      >
+        {label}
+      </div>
+      <FocusHint focused={focused} armed={armed} color={accentInk} />
+    </button>
   )
 }

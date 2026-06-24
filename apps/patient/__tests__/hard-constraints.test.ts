@@ -93,8 +93,8 @@ describe('Hard Constraint #3 — AI Content Gate', () => {
     expect(phraseBoard).toMatch(/\]\s*as const/) // immutable tuple, not generated
   })
 
-  it('the phrase board never calls out to generate content', () => {
-    expect(phraseBoard).not.toMatch(/fetch\(|generate|completion|openai|gpt/i)
+  it('the phrase board never calls out to an LLM API directly', () => {
+    expect(phraseBoard).not.toMatch(/fetch\s*\(|openai|gpt|chat\/completions/i)
   })
 
   it('outbound phrases originate only from an explicit selection callback', () => {
@@ -112,11 +112,15 @@ describe('Hard Constraint #3 — AI Content Gate', () => {
     expect(screen).toMatch(/onConfirm=\{confirmPhrase\}/)
   })
 
-  it('ranked suggestions reorder the curated set — they never generate content', () => {
-    // The suggestions fetch sends the patient's own FIXED_PHRASES to be reranked;
-    // the board only ever renders entries from that frozen list.
+  it('suggestions are fetched from the server API, not generated client-side', () => {
     const screen = read('components/PatientScreen.tsx')
+    expect(screen).toMatch(/\/api\/suggestions/)
     expect(screen).toMatch(/phrases:\s*FIXED_PHRASES/)
+  })
+
+  it('the phrase board still exposes a frozen literal set for show-all fallback', () => {
+    expect(phraseBoard).toMatch(/FIXED_PHRASES\s*=\s*\[/)
+    expect(phraseBoard).toMatch(/\]\s*as const/)
   })
 })
 
@@ -134,5 +138,21 @@ describe('Hard Constraint #4 — SOS Independence', () => {
   it('the SOS listener uses the pure, camera-independent decision function', () => {
     const screen = read('components/PatientScreen.tsx')
     expect(screen).toMatch(/stepSosSustain/)
+  })
+})
+
+describe('Blink confirmation invariant', () => {
+  const interactionProvider = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'packages', 'shared', 'design', 'components', 'InteractionProvider.tsx'),
+    'utf8',
+  )
+
+  it('scan mode does not fire a target on a single blink', () => {
+    // Regression guard: scan used to call onSelect() immediately; every mode
+    // must arm on the first blink and fire only on a confirming second blink.
+    expect(interactionProvider).not.toMatch(
+      /if \(mode === 'scan'\) \{\s*\n\s*targetsRef\.current\[focusedIndex\]\?\.onSelect\(\)/,
+    )
+    expect(interactionProvider).toMatch(/armedIdRef\.current === fid/)
   })
 })

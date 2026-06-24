@@ -6,9 +6,9 @@ import { useInteractiveTarget } from '../hooks/useInteractiveTarget'
 import { DwellRing } from './DwellRing'
 
 /**
- * The fixed phrases a patient can say. This is a frozen, literal list — the
- * patient can only ever send one of these (or one ranked subset of them); the
- * system never fabricates content (PRD AI Content Gate). Order is the grid order.
+ * The fixed phrases a patient can say proactively. This is a frozen, literal
+ * list used for patient-initiated "Speak" requests and as a fallback when AI
+ * generation fails. Order is the grid order.
  */
 export const FIXED_PHRASES = [
   'Need assistance',
@@ -37,8 +37,12 @@ export const FIXED_PHRASES = [
   'All done',
 ] as const
 
-/** How many ranked suggestions to show at once before "More options" cycles. */
-const SUGGESTION_WINDOW = 5
+export type ReplySuggestion = { text: string; tone?: string }
+
+/** How many AI suggestions to show at once. */
+const SUGGESTION_WINDOW = 4
+
+const MESSAGE_SNIPPET_MAX = 60
 
 interface PhraseBoardProps {
   /** Fire a phrase: opens the confirm step upstream (no immediate send). */
@@ -46,70 +50,102 @@ interface PhraseBoardProps {
   /** Close the board and return to the main screen without sending. */
   onClose: () => void
   /**
-   * Optional LLM-ranked ordering of the curated phrases, relevant to the
-   * caregiver message currently on screen. When present, the board opens in
-   * "suggested replies" mode showing the top matches first; the patient can
-   * still reveal the full board. Every entry is one of {@link FIXED_PHRASES}.
+   * Optional AI-generated or ranked reply suggestions for the caregiver message
+   * on screen. When present, the board opens in "suggested replies" mode.
    */
-  rankedSuggestions?: string[]
+  rankedSuggestions?: ReplySuggestion[]
+  /** Who the reply is to — shown in suggestion mode header. */
+  senderName?: string | null
+  /** The caregiver message being replied to — shown as a snippet in the header. */
+  messageContent?: string | null
+  /** Re-fetch a fresh batch of suggestions from the server. */
+  onRegenerate?: () => void
 }
 
 /**
- * Fullscreen overlay for patient-initiated phrases. In suggestion mode it shows
- * the top-ranked replies to the active message with "More options" (cycle) and
- * "Show all" (full board) controls; otherwise it shows the full phrase grid.
+ * Fullscreen overlay for patient phrases. In suggestion mode it shows
+ * contextual AI reply options with tone labels; otherwise the full phrase grid.
  * Every tile is an interactive target selectable by gaze dwell or scan blink.
  */
-export function PhraseBoard({ onPhrase, onClose, rankedSuggestions }: PhraseBoardProps) {
+export function PhraseBoard({
+  onPhrase,
+  onClose,
+  rankedSuggestions,
+  senderName,
+  messageContent,
+  onRegenerate,
+}: PhraseBoardProps) {
   const hasRanked = !!rankedSuggestions && rankedSuggestions.length > 0
   const [showAll, setShowAll] = useState(false)
-  const [offset, setOffset] = useState(0)
 
   const suggestionMode = hasRanked && !showAll
 
-  const windowed = hasRanked
-    ? Array.from(
-        { length: Math.min(SUGGESTION_WINDOW, rankedSuggestions!.length) },
-        (_, k) => rankedSuggestions![(offset + k) % rankedSuggestions!.length]!,
-      )
-    : []
+  const windowed = hasRanked ? rankedSuggestions!.slice(0, SUGGESTION_WINDOW) : []
+
+  const messageSnippet = messageContent
+    ? messageContent.length > MESSAGE_SNIPPET_MAX
+      ? `${messageContent.slice(0, MESSAGE_SNIPPET_MAX)}…`
+      : messageContent
+    : null
 
   return (
     <div
-      className="fixed inset-0 z-40 flex flex-col gap-6 overflow-hidden p-9"
+      className="fixed inset-0 z-40 flex flex-col gap-5 overflow-hidden p-9"
       style={{ background: 'radial-gradient(1100px 720px at 50% 14%,#FBF6F0 0%,#F4EEE6 55%,#EFE7DC 100%)' }}
       role="dialog"
       aria-label="Phrase board"
     >
-      <div className="flex items-center justify-center gap-3">
-        <h2
-          className="text-center"
-          style={{ fontFamily: typography.fontFamily.serif, color: colors.ink, fontSize: '34px', fontWeight: 600, letterSpacing: '-0.01em' }}
-        >
-          {suggestionMode ? 'Choose how to reply' : 'What would you like to say?'}
-        </h2>
-        {suggestionMode && (
-          <span className="flex items-center gap-2 rounded-full px-5 py-2.5 font-bold"
-            style={{ background: colors.brand.soft, color: colors.brand.deep, fontSize: 16 }}>
-            ✨ Suggested · in your words
-          </span>
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <h2
+            className="text-center"
+            style={{
+              fontFamily: typography.fontFamily.serif,
+              color: colors.ink,
+              fontSize: '34px',
+              fontWeight: 600,
+              letterSpacing: '-0.01em',
+            }}
+          >
+            {suggestionMode ? 'Choose how to reply' : 'What would you like to say?'}
+          </h2>
+          {suggestionMode && (
+            <span
+              className="flex items-center gap-2 rounded-full px-5 py-2.5 font-bold"
+              style={{ background: colors.brand.soft, color: colors.brand.deep, fontSize: 16 }}
+            >
+              ✨ Suggested · in your words
+            </span>
+          )}
+        </div>
+        {suggestionMode && (senderName || messageSnippet) && (
+          <p style={{ fontSize: 17, color: colors.inkMuted }}>
+            {senderName ? `To ${senderName}` : 'Replying'}
+            {messageSnippet ? ` · “${messageSnippet}”` : ''}
+          </p>
         )}
       </div>
 
       {suggestionMode ? (
         <>
           <div className="grid flex-1 content-center grid-cols-1 gap-5 sm:grid-cols-2">
-            {windowed.map((phrase) => (
-              <PhraseTile key={phrase} phrase={phrase} onSelect={() => onPhrase(phrase)} />
+            {windowed.map((suggestion, i) => (
+              <SuggestionTile
+                key={`${suggestion.text}-${i}`}
+                suggestion={suggestion}
+                onSelect={() => onPhrase(suggestion.text)}
+              />
             ))}
           </div>
           <div className="flex flex-wrap justify-center gap-5">
-            <ControlTile
-              id="suggestions:more"
-              label="🔄 More suggestions"
-              accent={colors.brand.primary}
-              onSelect={() => setOffset((o) => o + SUGGESTION_WINDOW)}
-            />
+            {onRegenerate && (
+              <ControlTile
+                id="suggestions:more"
+                label="🔄 More suggestions"
+                accent={colors.brand.primary}
+                onSelect={onRegenerate}
+              />
+            )}
             <ControlTile
               id="suggestions:all"
               label="▦ Show all phrases"
@@ -128,6 +164,67 @@ export function PhraseBoard({ onPhrase, onClose, rankedSuggestions }: PhraseBoar
 
       <CloseTile onSelect={onClose} />
     </div>
+  )
+}
+
+function toneColor(tone?: string): string {
+  if (!tone) return colors.inkMuted
+  const lower = tone.toLowerCase()
+  if (lower.includes('reassur') || lower.includes('comfort')) return colors.brand.primary
+  if (lower.includes('warm') || lower.includes('love') || lower.includes('grateful')) return '#EC6FB8'
+  if (lower.includes('ask') || lower.includes('request') || lower.includes('need')) return '#0E9384'
+  if (lower.includes('honest') || lower.includes('help')) return colors.patient.affirm
+  return colors.inkMuted
+}
+
+function SuggestionTile({
+  suggestion,
+  onSelect,
+}: {
+  suggestion: ReplySuggestion
+  onSelect: () => void
+}) {
+  const { ref, focused, dwellProgress } = useInteractiveTarget<HTMLButtonElement>(
+    `suggestion:${suggestion.text.slice(0, 40)}`,
+    onSelect,
+  )
+  const accent = toneColor(suggestion.tone)
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onSelect}
+      aria-label={suggestion.text}
+      className="relative flex flex-col items-start overflow-hidden rounded-[26px] bg-white px-8 py-7 text-left transition-transform active:scale-[0.98]"
+      style={{
+        minHeight: '140px',
+        border: `${focused ? 3 : 2}px solid ${focused ? colors.brand.primary : '#ECE2D6'}`,
+        boxShadow: focused ? '0 12px 30px rgba(124,92,252,.16)' : '0 6px 18px rgba(36,30,43,.05)',
+      }}
+    >
+      <DwellRing progress={dwellProgress} color={colors.brand.primary} />
+      {suggestion.tone && (
+        <span
+          className="relative mb-3 font-bold uppercase tracking-[.12em]"
+          style={{ fontSize: 14, color: accent }}
+        >
+          {suggestion.tone}
+        </span>
+      )}
+      <span
+        className="relative text-balance"
+        style={{
+          fontFamily: typography.fontFamily.serif,
+          color: colors.ink,
+          fontSize: 'clamp(20px, 2.2vw, 32px)',
+          fontWeight: 500,
+          lineHeight: 1.3,
+        }}
+      >
+        {suggestion.text}
+      </span>
+    </button>
   )
 }
 

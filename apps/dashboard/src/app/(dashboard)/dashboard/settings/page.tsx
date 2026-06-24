@@ -45,6 +45,10 @@ export default function SettingsPage() {
           <Link href="/dashboard/voice-library" className="font-bold text-brand-deep hover:underline">
             Voice library
           </Link>
+          . To record or update your own voice, visit{' '}
+          <Link href="/onboarding/voice" className="font-bold text-brand-deep hover:underline">
+            voice onboarding
+          </Link>
           . Gaze tracking is tuned on the patient device — see{' '}
           <Link href="/dashboard/calibration" className="font-bold text-brand-deep hover:underline">
             Calibration

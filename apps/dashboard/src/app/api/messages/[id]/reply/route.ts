@@ -40,39 +40,50 @@ export async function POST(
   }
 
   const repliedAt = new Date()
+  const wasUnread = !message.isRead
+  const isFamilyMessage = !!message.senderId
+
   await db
     .update(messages)
-    .set({ reply: parsed.data.reply, repliedAt })
+    .set({
+      reply: parsed.data.reply,
+      repliedAt,
+      ...(isFamilyMessage ? { isRead: true } : {}),
+    })
     .where(eq(messages.id, id))
 
   const wsServerUrl = process.env.WS_SERVER_URL
-  // Only family-sent messages can receive a yes/no reply. Notify every caregiver
-  // linked to this patient via the alerts room, not just the original sender, so
-  // any caregiver currently viewing the thread sees the reply land in real time.
-  if (wsServerUrl && message.senderId) {
-    const emitBody: EmitRequest = {
-      targetPatientAlerts: message.recipientId,
-      event: {
-        type: 'NEW_REPLY',
-        payload: {
-          messageId: id,
-          reply: parsed.data.reply,
-          repliedAt: repliedAt.toISOString(),
-        },
+  if (wsServerUrl && isFamilyMessage) {
+    const emit = async (event: EmitRequest['event']) => {
+      try {
+        await fetch(`${wsServerUrl}/emit`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-secret': process.env.WS_INTERNAL_SECRET ?? '',
+          },
+          body: JSON.stringify({ targetPatientAlerts: message.recipientId, event }),
+        })
+      } catch (err) {
+        console.warn('[reply] ws-server unreachable:', err)
+      }
+    }
+
+    // Replying implies the message was seen — flip the read receipt live.
+    if (wasUnread) {
+      await emit({ type: 'MESSAGE_READ', payload: { id, patientId: patient.id } })
+    }
+
+    // Notify every caregiver linked to this patient via the alerts room, not just
+    // the original sender, so any caregiver viewing the thread sees the reply.
+    await emit({
+      type: 'NEW_REPLY',
+      payload: {
+        messageId: id,
+        reply: parsed.data.reply,
+        repliedAt: repliedAt.toISOString(),
       },
-    }
-    try {
-      await fetch(`${wsServerUrl}/emit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-internal-secret': process.env.WS_INTERNAL_SECRET ?? '',
-        },
-        body: JSON.stringify(emitBody),
-      })
-    } catch (err) {
-      console.warn('[reply] ws-server unreachable:', err)
-    }
+    })
   }
 
   return NextResponse.json({ ok: true, repliedAt: repliedAt.toISOString() })

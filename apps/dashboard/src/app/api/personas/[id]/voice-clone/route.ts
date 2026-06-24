@@ -5,15 +5,16 @@ import { and, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
 import { getFamilyMemberFromSession } from '@/lib/caregiver-auth'
+import {
+  elevenLabsFetch,
+  elevenLabsVoicesAddUrl,
+  getElevenLabsApiKey,
+  parseVoiceCloneResponse,
+} from '@/lib/elevenlabs'
 
 /**
  * POST /api/personas/:id/voice-clone — clone a voice for one persona from an
  * in-app recording.
- *
- * Mirrors the caregiver's own voice-clone flow: a `multipart/form-data` body with
- * an `audio` file is forwarded to ElevenLabs Instant Voice Cloning, and the
- * returned `voice_id` is stored on the persona so messages sent AS that persona
- * are read in its voice. Owner-scoped; caregiver session required.
  */
 export async function POST(
   req: NextRequest,
@@ -30,7 +31,6 @@ export async function POST(
     return NextResponse.json({ error: 'Family member not found' }, { status: 404 })
   }
 
-  // Verify the persona exists and belongs to the signed-in account.
   const [persona] = await db
     .select()
     .from(personas)
@@ -39,8 +39,7 @@ export async function POST(
     return NextResponse.json({ error: 'Persona not found' }, { status: 404 })
   }
 
-  const apiKey = process.env.ELEVENLABS_API_KEY
-  if (!apiKey) {
+  if (!getElevenLabsApiKey()) {
     return NextResponse.json({ error: 'Voice cloning is not configured' }, { status: 503 })
   }
 
@@ -54,33 +53,29 @@ export async function POST(
   elevenForm.append('name', `Glance-${persona.name}-${persona.id.slice(0, 8)}`)
   elevenForm.append('files', audio, 'voice.webm')
 
-  let cloneRes: Response
-  try {
-    cloneRes = await fetch('https://api.elevenlabs.io/v1/voices/add', {
-      method: 'POST',
-      headers: { 'xi-api-key': apiKey },
-      body: elevenForm,
-    })
-  } catch (err) {
-    console.error('[persona voice-clone] ElevenLabs unreachable:', err)
+  const cloneResult = await elevenLabsFetch(elevenLabsVoicesAddUrl(), {
+    method: 'POST',
+    body: elevenForm,
+  })
+
+  if (!cloneResult.ok) {
     return NextResponse.json({ error: 'Voice cloning upstream error' }, { status: 502 })
   }
 
-  if (!cloneRes.ok) {
-    console.error('[persona voice-clone] ElevenLabs error:', cloneRes.status, await cloneRes.text())
-    return NextResponse.json({ error: 'Voice cloning upstream error' }, { status: 502 })
-  }
-
-  const data = (await cloneRes.json()) as { voice_id?: string }
-  const voiceId = data.voice_id
-  if (!voiceId) {
+  const data = parseVoiceCloneResponse(
+    (await cloneResult.response.json()) as Parameters<typeof parseVoiceCloneResponse>[0],
+  )
+  if (!data.voiceId) {
     return NextResponse.json({ error: 'No voice id returned' }, { status: 502 })
   }
 
   await db
     .update(personas)
-    .set({ elevenlabsVoiceId: voiceId })
+    .set({ elevenlabsVoiceId: data.voiceId })
     .where(and(eq(personas.id, id), eq(personas.familyMemberId, me.id)))
 
-  return NextResponse.json({ voiceId })
+  return NextResponse.json({
+    voiceId: data.voiceId,
+    requiresVerification: data.requiresVerification,
+  })
 }

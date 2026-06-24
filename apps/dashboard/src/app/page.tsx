@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from '@/lib/auth-client'
+import { hasSkippedVoiceOnboarding } from '@/lib/voice-onboarding'
 
 export default function DashboardGateway() {
   const router = useRouter()
@@ -12,9 +13,27 @@ export default function DashboardGateway() {
     if (sessionPending) return
     if (!session?.user) {
       router.replace('/login')
-    } else {
-      router.replace('/dashboard')
+      return
     }
+
+    if (hasSkippedVoiceOnboarding()) {
+      router.replace('/dashboard')
+      return
+    }
+
+    void (async () => {
+      try {
+        const res = await fetch('/api/family-member/me')
+        if (res.ok) {
+          const data = (await res.json()) as { elevenlabsVoiceId: string | null }
+          router.replace(data.elevenlabsVoiceId ? '/dashboard' : '/onboarding/voice')
+          return
+        }
+      } catch {
+        // best-effort
+      }
+      router.replace('/dashboard')
+    })()
   }, [session, sessionPending, router])
 
   return (

@@ -9,7 +9,16 @@ import { MessageBubble } from '@glance/shared/design/components'
 import type { Message } from '@glance/shared/types'
 import type { ServerToClientMessage } from '@glance/shared/ws'
 import { useDashboard } from '@/components/DashboardProvider'
+import { CameraCapture } from '@/components/CameraCapture'
 import { patientAppUrl } from '@/lib/patient-app'
+
+type PreviewTone = 'neutral' | 'warm' | 'urgent'
+
+const TONE_CHIP: Record<PreviewTone, { label: string; bg: string; color: string }> = {
+  neutral: { label: 'Neutral tone', bg: 'rgba(107,100,112,.12)', color: '#6B6470' },
+  warm: { label: 'Warm tone', bg: 'rgba(236,143,222,.18)', color: '#9B4D8A' },
+  urgent: { label: 'Urgent tone', bg: 'rgba(229,72,77,.14)', color: '#C62A2F' },
+}
 
 interface CameraScheduleItem {
   id?: string
@@ -53,7 +62,17 @@ export default function PatientDashboardPage() {
   const [mediaType, setMediaType] = useState<'image' | 'video'>('image')
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [showCamera, setShowCamera] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Compose assist (live preview + templates)
+  const [previewTone, setPreviewTone] = useState<PreviewTone | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [yesNoManual, setYesNoManual] = useState(false)
+  const [templates, setTemplates] = useState<string[] | null>(null)
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [templatesError, setTemplatesError] = useState<string | null>(null)
+  const previewAbortRef = useRef<AbortController | null>(null)
 
   // Messages
   const [messages, setMessages] = useState<ThreadMessage[]>([])
@@ -123,6 +142,15 @@ export default function PatientDashboardPage() {
     void fetchCameraConfig()
   }, [fetchMessages, fetchPersonas, fetchCameraConfig])
 
+  // Refresh persona voice status after recording in Voice library (other tab).
+  useEffect(() => {
+    function onFocus() {
+      void fetchPersonas()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [fetchPersonas])
+
   // ── Subscribe to the shared socket for THIS patient's live updates.
   useEffect(() => {
     if (!socket) return
@@ -138,7 +166,11 @@ export default function PatientDashboardPage() {
       if (envelope.type !== 'NEW_REPLY') return
       const { messageId, reply, repliedAt } = envelope.payload
       setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, reply, repliedAt: new Date(repliedAt) } : m)),
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, reply, repliedAt: new Date(repliedAt), isRead: true }
+            : m,
+        ),
       )
     }
 
@@ -161,6 +193,59 @@ export default function PatientDashboardPage() {
     }
   }, [socket, patientId])
 
+  // Debounced compose preview — tone chip + auto yes/no unless manually overridden.
+  useEffect(() => {
+    const trimmed = content.trim()
+    if (!trimmed) {
+      previewAbortRef.current?.abort()
+      setPreviewTone(null)
+      setPreviewLoading(false)
+      return
+    }
+
+    const timer = setTimeout(() => {
+      previewAbortRef.current?.abort()
+      const controller = new AbortController()
+      previewAbortRef.current = controller
+      setPreviewLoading(true)
+
+      void (async () => {
+        try {
+          const res = await fetch('/api/compose/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: trimmed }),
+            signal: controller.signal,
+          })
+          if (controller.signal.aborted) return
+          if (!res.ok) {
+            setPreviewTone(null)
+            return
+          }
+          const data = (await res.json()) as { tone?: PreviewTone; isYesNo?: boolean }
+          if (controller.signal.aborted) return
+          if (data.tone === 'warm' || data.tone === 'urgent' || data.tone === 'neutral') {
+            setPreviewTone(data.tone)
+          } else {
+            setPreviewTone('neutral')
+          }
+          if (!yesNoManual) {
+            setIsYesNo(data.isYesNo === true)
+          }
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          setPreviewTone(null)
+        } finally {
+          if (!controller.signal.aborted) setPreviewLoading(false)
+        }
+      })()
+    }, 500)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [content, yesNoManual])
+
   // The persona currently selected (null for Everyone/You), and the id we send as.
   const selectedPersona = personas.find((p) => p.id === selected) ?? null
   const sendAsPersonaId = selectedPersona?.id
@@ -172,9 +257,7 @@ export default function PatientDashboardPage() {
   )
 
   // ── Upload a chosen photo/video, then hold its URL for the next send.
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function uploadMediaFile(file: File) {
     setUploadError(null)
     setUploadingMedia(true)
     try {
@@ -198,12 +281,57 @@ export default function PatientDashboardPage() {
     }
   }
 
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await uploadMediaFile(file)
+  }
+
+  async function handleCameraCapture(file: File) {
+    setShowCamera(false)
+    await uploadMediaFile(file)
+  }
+
   // Drop the pending attachment and reset the picker so the same file can be re-chosen.
   function clearAttachment() {
     setMediaUrl('')
     setMediaType('image')
     setUploadError(null)
+    setShowCamera(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function fetchTemplates() {
+    const name = patient?.name?.trim()
+    if (!name) return
+    setTemplatesError(null)
+    setTemplatesLoading(true)
+    try {
+      const res = await fetch('/api/compose/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientName: name }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null
+        setTemplatesError(typeof data?.error === 'string' ? data.error : 'Failed to load suggestions')
+        return
+      }
+      const data = (await res.json()) as { templates?: string[] }
+      if (Array.isArray(data.templates) && data.templates.length > 0) {
+        setTemplates(data.templates)
+      }
+    } catch {
+      setTemplatesError('Network error — please try again')
+    } finally {
+      setTemplatesLoading(false)
+    }
+  }
+
+  function adoptTemplate(template: string) {
+    setContent(template)
+    setYesNoManual(false)
+    setTemplates(null)
   }
 
   // ── Send message (as the selected persona, or as the account)
@@ -230,6 +358,9 @@ export default function PatientDashboardPage() {
       } else {
         setContent('')
         setIsYesNo(false)
+        setYesNoManual(false)
+        setPreviewTone(null)
+        setTemplates(null)
         clearAttachment()
         await fetchMessages()
       }
@@ -298,16 +429,16 @@ export default function PatientDashboardPage() {
     setSchedules((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  // Messages visible for the current selection. The patient's own messages appear
-  // in every thread (their side of every conversation); a persona thread adds that
-  // persona's messages, the "You" thread adds the account's own direct messages.
+  // Messages visible for the current selection. Every message — family-sent and
+  // patient-sent — is scoped by the same thread identity (`personaId`): on a
+  // family message it is the persona it was sent AS; on a patient message it is
+  // the persona the patient directed the reply TO. So a reply to Mom shows only in
+  // Mom's thread (and "Everyone"), never in Dad's. The "You" thread is everything
+  // with no persona (the account's own messages + the patient's general phrases).
   const visibleMessages = useMemo(() => {
-    const filtered = messages.filter((m) => {
-      if (selected === 'all') return true
-      if (m.senderPatientId) return true
-      if (selected === 'you') return !m.personaId
-      return m.personaId === selected
-    })
+    const filtered = messages.filter((m) =>
+      selected === 'all' ? true : selected === 'you' ? !m.personaId : m.personaId === selected,
+    )
     // Fetched newest-first; render oldest→newest for a chat feel.
     return [...filtered].reverse()
   }, [messages, selected])
@@ -510,7 +641,7 @@ export default function PatientDashboardPage() {
 
         {/* Compose — pinned to the bottom */}
         <form onSubmit={handleSend} className="border-t border-line bg-white px-6 py-4">
-          <div className="mb-2 flex items-center gap-2 text-[13px]">
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
             <span className="text-ink-faint">Sending as</span>
             <span
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-bold"
@@ -522,13 +653,76 @@ export default function PatientDashboardPage() {
               {selectedPersona ? `🎙 ${sendingAsLabel}` : sendingAsLabel}
             </span>
             {selectedPersona && !selectedPersona.hasVoice && (
-              <span className="text-[12px] text-ink-faint">(plays in the device voice until you record one)</span>
+              <span className="text-[12px] text-ink-faint">
+                (plays in the device voice until you record one)
+              </span>
+            )}
+            {!selectedPersona && personas.some((p) => p.hasVoice) && (
+              <span className="text-[12px] font-bold text-brand-deep">
+                Select a person in the sidebar to use their cloned voice
+              </span>
             )}
           </div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            {content.trim() && (
+              <>
+                {previewLoading ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-bold text-ink-faint">
+                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
+                    Detecting tone…
+                  </span>
+                ) : previewTone ? (
+                  <span
+                    className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-bold"
+                    style={{
+                      background: TONE_CHIP[previewTone].bg,
+                      color: TONE_CHIP[previewTone].color,
+                    }}
+                  >
+                    {TONE_CHIP[previewTone].label}
+                  </span>
+                ) : null}
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => void fetchTemplates()}
+              disabled={templatesLoading || !patient?.name}
+              className="text-[13px] font-bold text-brand-deep hover:underline disabled:opacity-50"
+            >
+              {templatesLoading ? 'Suggesting…' : 'Suggest check-ins'}
+            </button>
+          </div>
+          {templates && templates.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {templates.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => adoptTemplate(t)}
+                  className="max-w-full rounded-full border border-line-warm bg-surface-warm px-3 py-1.5 text-left text-[13px] text-ink-muted transition-colors hover:border-brand-primary hover:bg-brand-soft hover:text-brand-deep"
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+          {templatesError && (
+            <p role="alert" className="mb-2 text-sm text-error">
+              {templatesError}
+            </p>
+          )}
           <div className="flex items-end gap-3">
             <textarea
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value
+                setContent(next)
+                if (!next.trim()) {
+                  setYesNoManual(false)
+                  setIsYesNo(false)
+                }
+              }}
               maxLength={1000}
               rows={2}
               placeholder={`Message ${patient?.name ?? 'your loved one'}…`}
@@ -549,12 +743,15 @@ export default function PatientDashboardPage() {
               <input
                 type="checkbox"
                 checked={isYesNo}
-                onChange={(e) => setIsYesNo(e.target.checked)}
+                onChange={(e) => {
+                  setIsYesNo(e.target.checked)
+                  setYesNoManual(true)
+                }}
                 className="rounded text-brand-primary focus:ring-brand-primary"
               />
               Ask as a Yes/No question
             </label>
-            <details className="text-sm" open={!!mediaUrl || uploadingMedia || !!uploadError}>
+            <details className="text-sm" open={!!mediaUrl || uploadingMedia || !!uploadError || showCamera}>
               <summary className="cursor-pointer text-ink-muted hover:text-ink">
                 Attach photo/video {mediaUrl && <span className="font-bold text-brand-deep">· 1 attached</span>}
               </summary>
@@ -567,6 +764,14 @@ export default function PatientDashboardPage() {
                   disabled={uploadingMedia}
                   className="text-sm text-ink-muted file:mr-3 file:cursor-pointer file:rounded-[10px] file:border-0 file:bg-brand-soft file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-brand-deep hover:file:bg-brand-soft/70"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowCamera((v) => !v)}
+                  disabled={uploadingMedia}
+                  className="rounded-[10px] border border-line-warm bg-white px-3 py-1.5 text-sm font-bold text-brand-deep transition-colors hover:bg-brand-soft disabled:opacity-50"
+                >
+                  {showCamera ? 'Hide camera' : 'Take photo'}
+                </button>
                 {uploadingMedia && <span className="text-ink-faint">Uploading…</span>}
                 {mediaUrl && !uploadingMedia && (
                   <span className="flex items-center gap-2">
@@ -587,6 +792,12 @@ export default function PatientDashboardPage() {
                   </span>
                 )}
               </div>
+              {showCamera && !uploadingMedia && (
+                <CameraCapture
+                  onCapture={(file) => void handleCameraCapture(file)}
+                  onCancel={() => setShowCamera(false)}
+                />
+              )}
               {uploadError && (
                 <p role="alert" className="mt-1.5 text-sm text-error">
                   {uploadError}

@@ -11,7 +11,7 @@ export function middleware(req: NextRequest) {
   if (req.method === 'OPTIONS') {
     const response = new NextResponse(null, { status: 204 })
     response.headers.set('Access-Control-Allow-Origin', origin)
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS, PUT, DELETE')
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Device-Token, Authorization')
     response.headers.set('Access-Control-Max-Age', '86400')
     return response

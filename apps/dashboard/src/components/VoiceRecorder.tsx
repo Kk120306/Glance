@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import { Button } from '@glance/shared/design/components'
 
-type RecorderStatus = 'idle' | 'recording' | 'uploading' | 'done' | 'error'
+type RecorderStatus = 'idle' | 'recording' | 'uploading' | 'done' | 'error' | 'pending_verification'
 
 /** Auto-stop a recording after this long so caregivers can't run forever. */
 const MAX_RECORD_MS = 60_000
@@ -95,8 +95,12 @@ export function VoiceRecorder({ onCloned, uploadUrl = '/api/family-member/me/voi
         setStatus('error')
         return
       }
-      const data = (await res.json()) as { voiceId: string }
-      setStatus('done')
+      const data = (await res.json()) as { voiceId: string; requiresVerification?: boolean }
+      if (data.requiresVerification) {
+        setStatus('pending_verification')
+      } else {
+        setStatus('done')
+      }
       onCloned?.(data.voiceId)
     } catch {
       setError('Network error — please try again')
@@ -130,7 +134,7 @@ export function VoiceRecorder({ onCloned, uploadUrl = '/api/family-member/me/voi
           <Button onClick={startRecording} disabled={status === 'uploading'}>
             {status === 'uploading'
               ? 'Cloning…'
-              : status === 'done'
+              : status === 'done' || status === 'pending_verification'
                 ? 'Record again'
                 : '● Record your voice'}
           </Button>
@@ -143,7 +147,19 @@ export function VoiceRecorder({ onCloned, uploadUrl = '/api/family-member/me/voi
           </span>
         )}
         {status === 'done' && <span className="text-sm font-bold" style={{ color: '#0B6F63' }}>Voice cloned ✓</span>}
+        {status === 'pending_verification' && (
+          <span className="text-sm font-bold" style={{ color: '#B45309' }}>
+            Voice saved — verify in ElevenLabs before playback
+          </span>
+        )}
       </div>
+
+      {status === 'pending_verification' && (
+        <p className="text-xs text-ink-muted">
+          Your voice was created but ElevenLabs requires verification before it can speak messages.
+          Open your ElevenLabs account → Voices to complete verification.
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="text-sm font-bold text-error">

@@ -267,7 +267,7 @@ export function GazeTrackingPanel({
               {focusedTargetId
                 ? `holding ${focusedTargetId}… ${Math.round(dwellProgress * 100)}%`
                 : mode !== 'gaze'
-                  ? 'scan mode — blink to select'
+                  ? 'scan mode — blink twice to select'
                   : gazeDirection === 'center'
                     ? 'steer: look up / down / left / right'
                     : `steering ${gazeDirection}`}

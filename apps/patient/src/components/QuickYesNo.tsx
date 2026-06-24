@@ -3,6 +3,7 @@
 import { colors, typography } from '@glance/shared/design/tokens'
 import { useInteractiveTarget } from '../hooks/useInteractiveTarget'
 import { DwellRing } from './DwellRing'
+import { FocusArriveRing, FocusHint, tileFocusStyle } from './FocusChrome'
 
 interface QuickYesNoProps {
   /**
@@ -36,7 +37,10 @@ export function QuickYesNo({ onPhrase, onClose }: QuickYesNoProps) {
         Say yes or no
       </h2>
 
-      <div className="grid flex-1 content-center grid-cols-1 gap-6 sm:grid-cols-2">
+      {/* Always a left/right split — never stacked — mirroring the incoming
+          Yes/No question screen so "yes is on the left, no is on the right" holds
+          everywhere a patient answers. */}
+      <div className="grid flex-1 content-center grid-cols-2 gap-6">
         <AnswerTile
           id="quickyesno:yes"
           phrase="Yes"
@@ -44,6 +48,7 @@ export function QuickYesNo({ onPhrase, onClose }: QuickYesNoProps) {
           accent={colors.patient.affirm}
           accentInk={colors.patient.affirmInk}
           bg="linear-gradient(180deg,#E4F7F2 0%,#D2F0E8 100%)"
+          bgFocused="linear-gradient(180deg,#D2F0E8 0%,#BCE8DC 100%)"
           onSelect={() => onPhrase('Yes')}
         />
         <AnswerTile
@@ -53,6 +58,7 @@ export function QuickYesNo({ onPhrase, onClose }: QuickYesNoProps) {
           accent="#B85656"
           accentInk="#9A4444"
           bg="linear-gradient(180deg,#FBEDED 0%,#F6DEDE 100%)"
+          bgFocused="linear-gradient(180deg,#F6DEDE 0%,#F0CECE 100%)"
           onSelect={() => onPhrase('No')}
         />
       </div>
@@ -69,6 +75,7 @@ function AnswerTile({
   accent,
   accentInk,
   bg,
+  bgFocused,
   onSelect,
 }: {
   id: string
@@ -77,6 +84,8 @@ function AnswerTile({
   accent: string
   accentInk: string
   bg: string
+  /** Darker variant shown while gaze focus rests on the tile. */
+  bgFocused: string
   onSelect: () => void
 }) {
   const { ref, focused, armed, dwellProgress } = useInteractiveTarget<HTMLButtonElement>(id, onSelect)
@@ -89,25 +98,12 @@ function AnswerTile({
       className="relative flex flex-col items-center justify-center overflow-hidden rounded-[32px] transition-transform duration-200 active:scale-[0.98]"
       style={{
         minHeight: '300px',
-        background: bg,
-        border: `${focused ? 4 : 2}px solid ${focused ? accent : 'transparent'}`,
-        boxShadow: focused ? `0 16px 36px ${accent}40` : '0 8px 24px rgba(36,30,43,.07)',
-        // Armed (first blink landed) gets a thicker accent halo, matching the
-        // home tiles' "blink again to confirm" affordance.
-        outline: armed ? `6px solid ${accent}40` : focused ? `4px solid ${accent}22` : 'none',
-        transform: focused ? 'scale(1.03)' : 'scale(1)',
+        background: focused ? bgFocused : bg,
+        ...tileFocusStyle({ focused, armed }),
       }}
     >
-      <DwellRing progress={dwellProgress} color={accent} />
-      {/* One-shot flash the moment gaze focus lands, so the patient sees which
-          tile they're on (mirrors the home tiles + the Yes/No split screen). */}
-      {focused && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-10"
-          style={{ borderRadius: 32, animation: 'focusArriveLight 460ms ease-out' }}
-        />
-      )}
+      <DwellRing progress={dwellProgress} color={colors.brand.primary} />
+      {focused && <FocusArriveRing radius={32} />}
       <div
         className="mb-5 flex h-[120px] w-[120px] items-center justify-center rounded-full text-white"
         style={{ background: accent, fontSize: 64, boxShadow: `0 16px 36px ${accent}55` }}
@@ -120,17 +116,7 @@ function AnswerTile({
       >
         {phrase}
       </span>
-      <span
-        className="relative mt-3.5 font-bold"
-        style={{
-          fontSize: 19,
-          color: accentInk,
-          opacity: focused ? 1 : 0,
-          animation: armed ? 'armPulse 1.2s ease-in-out infinite' : undefined,
-        }}
-      >
-        {armed ? 'Blink again to confirm ✓' : 'Blink twice to choose'}
-      </span>
+      <FocusHint focused={focused} armed={armed} color={accentInk} />
     </button>
   )
 }

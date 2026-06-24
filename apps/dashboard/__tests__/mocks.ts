@@ -25,6 +25,8 @@ import { vi } from 'vitest'
 
 const resultQueue: unknown[][] = []
 export const dbCalls = { select: 0, insert: 0, update: 0, delete: 0, transaction: 0 }
+/** Last `.set(...)` payload passed to `db.update` (for route assertions). */
+export let lastUpdateSet: unknown = null
 
 function nextResult(): unknown[] {
   return resultQueue.length > 0 ? resultQueue.shift()! : []
@@ -33,10 +35,14 @@ function nextResult(): unknown[] {
 function makeChain(): Record<string, unknown> {
   const chain: Record<string, unknown> = {}
   const passthrough = [
-    'from', 'where', 'orderBy', 'limit', 'offset', 'values', 'set',
+    'from', 'where', 'orderBy', 'limit', 'offset', 'values',
     'returning', 'innerJoin', 'leftJoin', 'onConflictDoNothing', 'groupBy',
   ]
   for (const m of passthrough) chain[m] = () => chain
+  chain.set = (v: unknown) => {
+    lastUpdateSet = v
+    return chain
+  }
   chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
     Promise.resolve(nextResult()).then(resolve, reject)
   return chain
@@ -86,6 +92,17 @@ export const getCaregiverAccess = vi.fn()
 
 export const classifyTone = vi.fn(async () => 'neutral' as const)
 
+type ComposePreviewResult = { tone: 'neutral' | 'warm' | 'urgent'; isYesNo: boolean }
+
+export const previewCompose = vi.fn(
+  async (): Promise<ComposePreviewResult> => ({ tone: 'neutral', isYesNo: false }),
+)
+export const generateTemplates = vi.fn(async () => [
+  'Thinking of you today — how are you feeling?',
+  'Just wanted to say I love you.',
+  'Is there anything you need right now?',
+])
+
 export const headers = vi.fn(async () => new Headers())
 
 // ── Reset ───────────────────────────────────────────────────────────────────
@@ -93,6 +110,7 @@ export const headers = vi.fn(async () => new Headers())
 /** Clear queued results, call counters, and all mock fns. Call in beforeEach. */
 export function resetMocks() {
   resultQueue.length = 0
+  lastUpdateSet = null
   dbCalls.select = 0
   dbCalls.insert = 0
   dbCalls.update = 0
@@ -100,11 +118,18 @@ export function resetMocks() {
   dbCalls.transaction = 0
   for (const fn of [
     db.select, db.insert, db.update, db.delete, db.transaction,
-    getSession, getFamilyMemberFromSession, getCaregiverAccess, classifyTone, headers,
+    getSession, getFamilyMemberFromSession, getCaregiverAccess, classifyTone,
+    previewCompose, generateTemplates, headers,
   ]) {
     fn.mockClear()
   }
   // Restore default resolved values cleared by mockClear.
   classifyTone.mockResolvedValue('neutral')
+  previewCompose.mockResolvedValue({ tone: 'neutral', isYesNo: false })
+  generateTemplates.mockResolvedValue([
+    'Thinking of you today — how are you feeling?',
+    'Just wanted to say I love you.',
+    'Is there anything you need right now?',
+  ])
   headers.mockResolvedValue(new Headers())
 }

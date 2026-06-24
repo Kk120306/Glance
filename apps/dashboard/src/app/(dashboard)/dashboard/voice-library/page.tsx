@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Button } from '@glance/shared/design/components'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 
@@ -23,10 +24,7 @@ export default function VoiceLibraryPage() {
   const [roster, setRoster] = useState<VoicePerson[]>([])
   const [loading, setLoading] = useState(true)
 
-  // The signed-in caregiver's own voice id (the only one they can edit).
-  const [voiceId, setVoiceId] = useState('')
-  const [voiceSaving, setVoiceSaving] = useState(false)
-  const [voiceSaved, setVoiceSaved] = useState(false)
+  const [hasMyVoice, setHasMyVoice] = useState(false)
 
   // Personas — named identities (Mom, Dad, Kid) the account can message AS.
   const [personas, setPersonas] = useState<Persona[]>([])
@@ -50,7 +48,7 @@ export default function VoiceLibraryPage() {
       const res = await fetch('/api/family-member/me')
       if (res.ok) {
         const data = (await res.json()) as { elevenlabsVoiceId: string | null }
-        setVoiceId(data.elevenlabsVoiceId ?? '')
+        setHasMyVoice(!!data.elevenlabsVoiceId)
       }
     } catch {
       // best-effort
@@ -72,24 +70,6 @@ export default function VoiceLibraryPage() {
     void fetchPersonas()
   }, [fetchRoster, fetchMyVoice, fetchPersonas])
 
-  async function handleSaveVoice() {
-    setVoiceSaving(true)
-    try {
-      await fetch('/api/family-member/me/voice', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ elevenlabsVoiceId: voiceId || null }),
-      })
-      setVoiceSaved(true)
-      setTimeout(() => setVoiceSaved(false), 2000)
-      void fetchRoster()
-    } catch {
-      // ignore
-    } finally {
-      setVoiceSaving(false)
-    }
-  }
-
   async function handleCreatePersona() {
     const name = newPersonaName.trim()
     if (!name) return
@@ -101,9 +81,9 @@ export default function VoiceLibraryPage() {
         body: JSON.stringify({ name }),
       })
       if (res.ok) {
-        const created = (await res.json()) as Persona
         setNewPersonaName('')
-        setExpandedPersona(created.id) // open the recorder for the fresh persona
+        // Adding a person is intentionally voice-free: don't auto-open the
+        // recorder. A voice can be added later via each row's "Record voice".
         await fetchPersonas()
       }
     } catch {
@@ -137,45 +117,35 @@ export default function VoiceLibraryPage() {
         </p>
       </header>
 
-      {/* Your voice — the account default */}
-      <section className="mb-6 flex flex-col gap-5 rounded-[22px] border border-line bg-white p-6 shadow-soft max-w-2xl">
+      {/* Your voice — managed on onboarding */}
+      <section className="mb-6 flex flex-col gap-4 rounded-[22px] border border-line bg-white p-6 shadow-soft max-w-2xl">
         <div className="flex items-center justify-between">
           <h2 className="font-serif text-xl font-semibold text-ink">Your voice</h2>
           <span
             className={`rounded-full px-3 py-1 text-[13px] font-bold ${
-              voiceId ? 'bg-[#D9F6F0] text-[#0B6F63]' : 'bg-line text-ink-muted'
+              hasMyVoice ? 'bg-[#D9F6F0] text-[#0B6F63]' : 'bg-line text-ink-muted'
             }`}
           >
-            {voiceId ? 'Voice on file ✓' : 'No voice yet'}
+            {hasMyVoice ? 'Voice on file ✓' : 'No voice yet'}
           </span>
         </div>
-
-        <VoiceRecorder onCloned={(id) => setVoiceId(id)} />
-
-        <details>
-          <summary className="cursor-pointer text-xs text-ink-muted hover:text-ink-muted">
-            Advanced: use an existing ElevenLabs voice ID
-          </summary>
-          <div className="mt-2 flex gap-2">
-            <input
-              type="text"
-              value={voiceId}
-              onChange={(e) => setVoiceId(e.target.value)}
-              placeholder="e.g. 21m00Tcm4TlvDq8ikWAM"
-              className="flex-1 rounded-[14px] border border-line-warm px-4 py-3 text-sm transition-all focus:bg-surface-warm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-            />
-            <Button onClick={handleSaveVoice} disabled={voiceSaving}>
-              {voiceSaved ? 'Saved!' : voiceSaving ? 'Saving…' : 'Save'}
-            </Button>
-          </div>
-        </details>
+        <p className="text-[14px] text-ink-muted">
+          Record or update the voice your loved one hears when you message as yourself.
+        </p>
+        <Link
+          href="/onboarding/voice"
+          className="inline-flex w-fit rounded-[14px] bg-brand-primary px-4 py-2.5 text-sm font-bold text-white hover:opacity-90"
+        >
+          {hasMyVoice ? 'Re-record your voice' : 'Record your voice'}
+        </Link>
       </section>
 
       {/* Personas — the people you can message as */}
       <section className="mb-6 max-w-2xl">
         <h2 className="mb-1 font-serif text-2xl font-semibold text-ink">People you message as</h2>
         <p className="mb-3 text-[14px] text-ink-muted">
-          Add a person, record their voice, then pick them when sending a message.
+          Add a person, then pick them when sending a message. Recording their voice is
+          optional — you can add it later from their row.
         </p>
 
         {/* Add a persona */}

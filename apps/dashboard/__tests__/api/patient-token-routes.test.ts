@@ -71,6 +71,42 @@ describe('POST /api/messages/patient — device-token auth', () => {
     const res = await patientMessage(makeRequest({ headers: { 'x-device-token': TOKEN }, body: { content: 'Water please' } }))
     expect(res.status).toBe(201)
     expect(mocks.dbCalls.insert).toBe(1)
+    // No reply target → no persona ownership lookup runs (patient select only).
+    expect(mocks.dbCalls.select).toBe(1)
+  })
+
+  it('400 on a non-UUID replyToPersonaId', async () => {
+    mocks.queueResult([{ id: UUID_A, deviceToken: TOKEN }]) // patient
+    const res = await patientMessage(
+      makeRequest({ headers: { 'x-device-token': TOKEN }, body: { content: 'Yes', replyToPersonaId: 'nope' } }),
+    )
+    expect(res.status).toBe(400)
+    expect(mocks.dbCalls.insert).toBe(0)
+  })
+
+  it('201 scopes a reply to a persona linked to this patient', async () => {
+    mocks.queueResult([{ id: UUID_A, deviceToken: TOKEN }]) // patient
+    mocks.queueResult([{ id: UUID_B }]) // persona ownership/link lookup → linked
+    mocks.queueResult([{ id: 'msg-1', content: 'Yes', personaId: UUID_B }]) // insert returning
+    const res = await patientMessage(
+      makeRequest({ headers: { 'x-device-token': TOKEN }, body: { content: 'Yes', replyToPersonaId: UUID_B } }),
+    )
+    expect(res.status).toBe(201)
+    expect(mocks.dbCalls.insert).toBe(1)
+    // Patient lookup + persona-link lookup both ran.
+    expect(mocks.dbCalls.select).toBe(2)
+  })
+
+  it('201 but drops a persona not linked to this patient (stored as null)', async () => {
+    mocks.queueResult([{ id: UUID_A, deviceToken: TOKEN }]) // patient
+    mocks.queueResult([]) // persona link lookup → not found
+    mocks.queueResult([{ id: 'msg-1', content: 'Yes', personaId: null }]) // insert returning
+    const res = await patientMessage(
+      makeRequest({ headers: { 'x-device-token': TOKEN }, body: { content: 'Yes', replyToPersonaId: UUID_C } }),
+    )
+    // Still persists (never block the patient from speaking) — just unscoped.
+    expect(res.status).toBe(201)
+    expect(mocks.dbCalls.insert).toBe(1)
   })
 })
 
@@ -105,10 +141,20 @@ describe('POST /api/messages/[id]/reply — device-token auth', () => {
 
   it('200 records a valid yes/no reply', async () => {
     mocks.queueResult([{ id: UUID_A, deviceToken: TOKEN }]) // patient
-    mocks.queueResult([{ id: UUID_C, recipientId: UUID_A, senderId: 'fm-1' }]) // message
+    mocks.queueResult([{ id: UUID_C, recipientId: UUID_A, senderId: 'fm-1', isRead: false }]) // message
     const res = await reply(makeRequest({ headers: { 'x-device-token': TOKEN }, body: { reply: 'yes' } }), makeContext({ id: UUID_C }))
     expect(res.status).toBe(200)
     expect(mocks.dbCalls.update).toBe(1)
+    expect(mocks.lastUpdateSet).toMatchObject({ reply: 'yes', isRead: true })
+  })
+
+  it('200 on an already-read message still records the reply', async () => {
+    mocks.queueResult([{ id: UUID_A, deviceToken: TOKEN }]) // patient
+    mocks.queueResult([{ id: UUID_C, recipientId: UUID_A, senderId: 'fm-1', isRead: true }]) // already seen
+    const res = await reply(makeRequest({ headers: { 'x-device-token': TOKEN }, body: { reply: 'no' } }), makeContext({ id: UUID_C }))
+    expect(res.status).toBe(200)
+    expect(mocks.dbCalls.update).toBe(1)
+    expect(mocks.lastUpdateSet).toMatchObject({ reply: 'no', isRead: true })
   })
 })
 

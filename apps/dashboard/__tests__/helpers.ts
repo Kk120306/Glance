@@ -23,8 +23,10 @@ export function makeRequest(init: RequestStubInit = {}) {
   const lowerHeaders = new Map(
     Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]),
   )
+  const parsedUrl = new URL(url)
   return {
     url,
+    nextUrl: parsedUrl,
     headers: {
       get: (name: string) => lowerHeaders.get(name.toLowerCase()) ?? null,
     },
